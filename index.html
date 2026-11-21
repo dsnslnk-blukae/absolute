@@ -19,7 +19,7 @@ header h1{font-size:18px;margin:0;flex:1}
 button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:var(--accent);color:var(--accent-text);cursor:pointer}
 button.ghost{background:transparent;color:var(--accent);padding:8px 10px}
 button:disabled{opacity:.5}
-input{font:inherit;width:100%;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text)}
+input,textarea{font:inherit;width:100%;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text)}
 #auth{justify-content:center;padding:24px;gap:12px}
 #auth h1{margin:0;font-size:26px}
 #auth p{margin:0 0 8px;color:var(--muted)}
@@ -103,6 +103,7 @@ dialog h2{margin:0 0 10px;font-size:18px}
     <h2>✅ Backup created</h2>
     <p class="hint">An encrypted copy is saved to your account. Also save a backup file to Google Drive (tap the button, then choose Drive). The file is useless without your passphrase, so don’t store the passphrase next to it.</p>
     <div class="row"><button id="bkShare">Save file to Drive</button></div>
+    <div class="row" style="margin-top:8px"><button id="bkCopy" class="ghost" style="border:1px solid var(--accent)">Copy backup code instead</button></div>
     <div class="row" style="margin-top:8px"><button class="ghost" id="bkClose">Done</button></div>
   </div>
 </dialog>
@@ -111,8 +112,9 @@ dialog h2{margin:0 0 10px;font-size:18px}
   <h2>Restore your key</h2>
   <p class="hint">This device doesn’t have your encryption key. Enter your recovery passphrase to read your old messages.</p>
   <input id="rsPass" type="password" placeholder="Recovery passphrase" autocomplete="current-password">
-  <p class="hint" style="margin:10px 0 4px">Optional: choose your backup file (from Drive) instead of using the copy in your account.</p>
-  <input id="rsFile" type="file" accept=".json,application/json">
+  <p class="hint" style="margin:10px 0 4px">Optional: you don’t need a file. Your account already holds an encrypted copy. Only use these if that copy is missing.</p>
+  <input id="rsFile" type="file">
+  <textarea id="rsText" rows="3" placeholder="Or paste your backup code here" style="margin-top:8px"></textarea>
   <div id="rsMsg" class="hint" style="margin-top:8px;color:var(--danger)"></div>
   <div class="row"><button id="rsGo">Restore</button></div>
   <div class="row" style="margin-top:8px"><button class="ghost" id="rsFresh">Start fresh</button><button class="ghost" id="rsCancel">Cancel</button></div>
@@ -396,12 +398,12 @@ function askRestore(prof){
   return new Promise(resolve => {
     const dlg = $('rsDlg'); let done = false;
     const finish = v => { if (done) return; done = true; if (dlg.open) dlg.close(); resolve(v); };
-    $('rsMsg').textContent = ''; $('rsPass').value = ''; $('rsFile').value = '';
+    $('rsMsg').textContent = ''; $('rsPass').value = ''; $('rsFile').value = ''; $('rsText').value = '';
     $('rsGo').onclick = async () => {
       const pass = $('rsPass').value, f = $('rsFile').files[0];
       if (!pass) return $('rsMsg').textContent = 'Enter your recovery passphrase';
-      const json = f ? await f.text() : prof.key_backup;
-      if (!json) return $('rsMsg').textContent = 'No backup found in your account. Choose a backup file above.';
+      const json = f ? await f.text() : ($('rsText').value.trim() || prof.key_backup);
+      if (!json) return $('rsMsg').textContent = 'No backup found in your account. Choose a file or paste your backup code above.';
       $('rsGo').disabled = true; $('rsMsg').textContent = 'Unlocking…';
       try {
         const sk = await openBackup(json, pass);
@@ -424,6 +426,10 @@ $('bkGo').onclick = createBackup;
 $('bkCancel').onclick = () => $('bkDlg').close();
 $('bkClose').onclick = () => $('bkDlg').close();
 $('bkShare').onclick = saveBackupFile;
+$('bkCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText(lastBackup); toast('Backup code copied. Paste it into a Drive doc or note.'); }
+  catch { toast('Copy failed. Use the file button instead.'); }
+};
 $('loginBtn').onclick = () => submitAuth('login');
 $('signupBtn').onclick = () => submitAuth('signup');
 $('p').addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth('login'); });
