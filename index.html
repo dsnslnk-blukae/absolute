@@ -42,6 +42,10 @@ dialog{border:0;border-radius:14px;padding:18px;width:min(92vw,360px);background
 dialog::backdrop{background:rgba(0,0,0,.5)}
 dialog h2{margin:0 0 10px;font-size:18px}
 .fp{font:600 18px/1.6 ui-monospace,Menlo,monospace;letter-spacing:1px;text-align:center;padding:10px;background:var(--bg);border-radius:10px}
+.hint{font-size:14px;color:var(--muted);margin:0 0 10px}
+.banner{display:flex;gap:10px;align-items:center;padding:10px 14px;background:#fff4d6;color:#4a3500;font-size:14px}
+@media (prefers-color-scheme:dark){.banner{background:#3a2f0b;color:#ffe9a8}}
+.banner button{white-space:nowrap;padding:8px 12px}
 #toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s}
 #toast.on{opacity:.95}
 </style>
@@ -61,7 +65,8 @@ dialog h2{margin:0 0 10px;font-size:18px}
   </section>
 
   <section id="list" hidden>
-    <header><h1>Chats</h1><button class="ghost" id="newBtn">+ New</button><button class="ghost" id="logoutBtn">Log out</button></header>
+    <header><h1>Chats</h1><button class="ghost" id="backupBtn" title="Back up key">🔑</button><button class="ghost" id="newBtn">+ New</button><button class="ghost" id="logoutBtn">Log out</button></header>
+    <div class="banner" id="banner" hidden><span>⚠️ Your key isn’t backed up. Clearing browser data would lose your old messages.</span><button id="bannerBtn">Back up</button></div>
     <div id="convos"></div>
   </section>
 
@@ -83,6 +88,34 @@ dialog h2{margin:0 0 10px;font-size:18px}
   <p style="margin-top:0;color:var(--muted);font-size:14px">Compare this number with your contact in person or by phone. If it matches on both sides, nobody is intercepting your chat.</p>
   <div class="fp" id="fp"></div>
   <div class="row" style="margin-top:12px"><button id="verClose">Close</button></div>
+</dialog>
+
+<dialog id="bkDlg">
+  <div id="bkForm">
+    <h2>Back up your key</h2>
+    <p class="hint">Choose a recovery passphrase: 12+ characters with letters and numbers. Without it, nobody can recover your old messages, not even us.</p>
+    <input id="bkPass" type="password" placeholder="Recovery passphrase" autocomplete="new-password">
+    <input id="bkPass2" type="password" placeholder="Repeat passphrase" autocomplete="new-password" style="margin-top:8px">
+    <div id="bkMsg" class="hint" style="margin-top:8px;color:var(--danger)"></div>
+    <div class="row" style="margin-top:8px"><button class="ghost" id="bkCancel">Cancel</button><button id="bkGo">Create backup</button></div>
+  </div>
+  <div id="bkDone" hidden>
+    <h2>✅ Backup created</h2>
+    <p class="hint">An encrypted copy is saved to your account. Also save a backup file to Google Drive (tap the button, then choose Drive). The file is useless without your passphrase, so don’t store the passphrase next to it.</p>
+    <div class="row"><button id="bkShare">Save file to Drive</button></div>
+    <div class="row" style="margin-top:8px"><button class="ghost" id="bkClose">Done</button></div>
+  </div>
+</dialog>
+
+<dialog id="rsDlg">
+  <h2>Restore your key</h2>
+  <p class="hint">This device doesn’t have your encryption key. Enter your recovery passphrase to read your old messages.</p>
+  <input id="rsPass" type="password" placeholder="Recovery passphrase" autocomplete="current-password">
+  <p class="hint" style="margin:10px 0 4px">Optional: choose your backup file (from Drive) instead of using the copy in your account.</p>
+  <input id="rsFile" type="file" accept=".json,application/json">
+  <div id="rsMsg" class="hint" style="margin-top:8px;color:var(--danger)"></div>
+  <div class="row"><button id="rsGo">Restore</button></div>
+  <div class="row" style="margin-top:8px"><button class="ghost" id="rsFresh">Start fresh</button><button class="ghost" id="rsCancel">Cancel</button></div>
 </dialog>
 
 <div id="toast"></div>
@@ -145,24 +178,29 @@ async function start(){
   let { data: prof } = await sb.from('profiles').select('*').eq('id', uid).maybeSingle();
   let skStr = localStorage.getItem('sk:' + uid);
 
-  if (!prof || !skStr){
-    if (prof && !confirm('This device has no encryption key for your account. Create a new one? Your older messages will become unreadable.')){
-      await sb.auth.signOut(); return show('auth');
-    }
+  let fresh = false;
+  if (prof && !skStr){
+    const res = await askRestore(prof);
+    if (!res){ await sb.auth.signOut(); return show('auth'); }
+    if (res.sk){ skStr = b64(res.sk); localStorage.setItem('sk:' + uid, skStr); } else fresh = true;
+  }
+  if (!prof || fresh){
+    const uname = session.user.email.split('@')[0];
     const kp = nacl.box.keyPair();
     const pub = b64(kp.publicKey);
     const q = prof
-      ? sb.from('profiles').update({ public_key: pub }).eq('id', uid)
-      : sb.from('profiles').insert({ id: uid, username: session.user.email.split('@')[0], public_key: pub });
+      ? sb.from('profiles').update({ public_key: pub, key_backup: null }).eq('id', uid)
+      : sb.from('profiles').insert({ id: uid, username: uname, public_key: pub });
     const { error } = await q;
     if (error) throw error;
     skStr = b64(kp.secretKey);
     localStorage.setItem('sk:' + uid, skStr);
-    prof = { ...(prof || { id: uid, username: session.user.email.split('@')[0] }), public_key: pub };
+    prof = { ...(prof || { id: uid, username: uname }), public_key: pub, key_backup: null };
   }
 
-  me = { id: uid, username: prof.username, pk: prof.public_key, sk: unb64(skStr) };
+  me = { id: uid, username: prof.username, pk: prof.public_key, sk: unb64(skStr), backedUp: !!prof.key_backup };
   profiles[uid] = prof;
+  $('banner').hidden = me.backedUp;
   const { data: rows, error } = await sb.from('messages').select('*').order('created_at', { ascending: true }).limit(2000);
   if (error) throw error;
   msgs = rows;
@@ -298,7 +336,94 @@ function showSafety(){
   $('verDlg').showModal();
 }
 
+/* ---------- Key backup & restore ---------- */
+async function deriveKey(pass, salt, iter){
+  const km = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass.normalize('NFKC')), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: iter }, km, 256);
+  return new Uint8Array(bits);
+}
+async function makeBackup(pass){
+  const salt = nacl.randomBytes(16), iter = 600000;
+  const key = await deriveKey(pass, salt, iter);
+  const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+  const ct = nacl.secretbox(me.sk, nonce, key);
+  return JSON.stringify({ v: 1, app: 'securechat', user: me.username, kdf: 'pbkdf2-sha256', iter, salt: b64(salt), nonce: b64(nonce), ct: b64(ct) });
+}
+async function openBackup(json, pass){
+  let o;
+  try { o = JSON.parse(json); unb64(o.salt); } catch { throw new Error('That is not a valid backup file'); }
+  if (!(o.iter >= 100000 && o.iter <= 2000000)) throw new Error('That is not a valid backup file');
+  const key = await deriveKey(pass, unb64(o.salt), o.iter);
+  const sk = nacl.secretbox.open(unb64(o.ct), unb64(o.nonce), key);
+  if (!sk) throw new Error('Wrong passphrase');
+  return sk;
+}
+
+let lastBackup = null;
+function openBackupDlg(){
+  $('bkPass').value = ''; $('bkPass2').value = ''; $('bkMsg').textContent = '';
+  $('bkForm').hidden = false; $('bkDone').hidden = true;
+  $('bkDlg').showModal();
+}
+async function createBackup(){
+  const a = $('bkPass').value, b = $('bkPass2').value, m = $('bkMsg');
+  if (a.length < 12 || !/[a-z]/i.test(a) || !/\d/.test(a)) return m.textContent = 'Use 12+ characters with both letters and numbers';
+  if (a !== b) return m.textContent = 'The two passphrases don’t match';
+  $('bkGo').disabled = true; m.textContent = 'Encrypting…';
+  try {
+    lastBackup = await makeBackup(a);
+    const { error } = await sb.from('profiles').update({ key_backup: lastBackup }).eq('id', me.id);
+    if (error) throw error;
+    me.backedUp = true; $('banner').hidden = true;
+    $('bkPass').value = ''; $('bkPass2').value = ''; m.textContent = '';
+    $('bkForm').hidden = true; $('bkDone').hidden = false;
+  } catch (e) { m.textContent = friendly(e); }
+  $('bkGo').disabled = false;
+}
+function saveBackupFile(){
+  if (!lastBackup) return;
+  const file = new File([lastBackup], `securechat-backup-${me.username}.json`, { type: 'application/json' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })){
+    navigator.share({ files: [file], title: 'SecureChat key backup' }).catch(() => {});
+  } else {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(file); a.download = file.name; a.click();
+    toast('Saved to your Downloads folder');
+  }
+}
+
+function askRestore(prof){
+  return new Promise(resolve => {
+    const dlg = $('rsDlg'); let done = false;
+    const finish = v => { if (done) return; done = true; if (dlg.open) dlg.close(); resolve(v); };
+    $('rsMsg').textContent = ''; $('rsPass').value = ''; $('rsFile').value = '';
+    $('rsGo').onclick = async () => {
+      const pass = $('rsPass').value, f = $('rsFile').files[0];
+      if (!pass) return $('rsMsg').textContent = 'Enter your recovery passphrase';
+      const json = f ? await f.text() : prof.key_backup;
+      if (!json) return $('rsMsg').textContent = 'No backup found in your account. Choose a backup file above.';
+      $('rsGo').disabled = true; $('rsMsg').textContent = 'Unlocking…';
+      try {
+        const sk = await openBackup(json, pass);
+        if (b64(nacl.box.keyPair.fromSecretKey(sk).publicKey) !== prof.public_key) throw new Error('This backup doesn’t match your account’s current key');
+        finish({ sk });
+      } catch (e) { $('rsMsg').textContent = e.message; }
+      $('rsGo').disabled = false;
+    };
+    $('rsFresh').onclick = () => { if (confirm('Create a new key? Your older messages will stay unreadable.')) finish({ fresh: true }); };
+    $('rsCancel').onclick = () => finish(null);
+    dlg.addEventListener('cancel', () => finish(null), { once: true });
+    dlg.showModal();
+  });
+}
+
 /* ---------- Wire up ---------- */
+$('backupBtn').onclick = openBackupDlg;
+$('bannerBtn').onclick = openBackupDlg;
+$('bkGo').onclick = createBackup;
+$('bkCancel').onclick = () => $('bkDlg').close();
+$('bkClose').onclick = () => $('bkDlg').close();
+$('bkShare').onclick = saveBackupFile;
 $('loginBtn').onclick = () => submitAuth('login');
 $('signupBtn').onclick = () => submitAuth('signup');
 $('p').addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth('login'); });
