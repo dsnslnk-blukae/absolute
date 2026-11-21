@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<title>SecureChat</title>
+<style>
+:root{--bg:#f6f7f9;--surface:#fff;--text:#14181f;--muted:#6b7280;--accent:#0f766e;--accent-text:#fff;--mine:#0f766e;--mine-text:#fff;--theirs:#e8ebef;--border:#e2e5ea;--danger:#c0392b;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1116;--surface:#171b22;--text:#e8ebef;--muted:#8b93a1;--accent:#2dd4bf;--accent-text:#04201d;--mine:#0f766e;--mine-text:#fff;--theirs:#232933;--border:#262c36;--danger:#ff6b5b;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+#app{height:100%;display:flex;flex-direction:column;max-width:640px;margin:0 auto;background:var(--surface);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+section{display:flex;flex-direction:column;flex:1;min-height:0}
+[hidden]{display:none!important}
+header{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border)}
+header h1{font-size:18px;margin:0;flex:1}
+button{font:inherit;border:0;border-radius:10px;padding:10px 14px;background:var(--accent);color:var(--accent-text);cursor:pointer}
+button.ghost{background:transparent;color:var(--accent);padding:8px 10px}
+button:disabled{opacity:.5}
+input{font:inherit;width:100%;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text)}
+#auth{justify-content:center;padding:24px;gap:12px}
+#auth h1{margin:0;font-size:26px}
+#auth p{margin:0 0 8px;color:var(--muted)}
+#err{color:var(--danger);min-height:20px;font-size:14px}
+.row{display:flex;gap:8px}
+.row button{flex:1}
+#convos,#msgs{flex:1;overflow-y:auto;min-height:0}
+.convo{padding:14px;border-bottom:1px solid var(--border);cursor:pointer}
+.convo b{display:block}
+.convo span{color:var(--muted);font-size:14px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.empty{padding:32px 20px;text-align:center;color:var(--muted)}
+#msgs{display:flex;flex-direction:column;gap:6px;padding:12px;background:var(--bg)}
+.b{max-width:80%;padding:8px 12px;border-radius:16px;white-space:pre-wrap;overflow-wrap:anywhere}
+.b.me{align-self:flex-end;background:var(--mine);color:var(--mine-text);border-bottom-right-radius:4px}
+.b.them{align-self:flex-start;background:var(--theirs);border-bottom-left-radius:4px}
+.b small{display:block;opacity:.65;font-size:11px;margin-top:2px}
+.b.fail{font-style:italic;opacity:.7}
+#composer{display:flex;gap:8px;padding:10px;border-top:1px solid var(--border)}
+dialog{border:0;border-radius:14px;padding:18px;width:min(92vw,360px);background:var(--surface);color:var(--text)}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+dialog h2{margin:0 0 10px;font-size:18px}
+.fp{font:600 18px/1.6 ui-monospace,Menlo,monospace;letter-spacing:1px;text-align:center;padding:10px;background:var(--bg);border-radius:10px}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s}
+#toast.on{opacity:.95}
+</style>
+</head>
+<body>
+<div id="app">
+  <section id="auth" hidden>
+    <h1>🔒 SecureChat</h1>
+    <p>End-to-end encrypted messaging.</p>
+    <input id="u" placeholder="Username" autocapitalize="off" autocomplete="username">
+    <input id="p" type="password" placeholder="Password (8+ characters)" autocomplete="current-password">
+    <div id="err"></div>
+    <div class="row">
+      <button id="loginBtn">Log in</button>
+      <button id="signupBtn" class="ghost" style="border:1px solid var(--accent)">Sign up</button>
+    </div>
+  </section>
+
+  <section id="list" hidden>
+    <header><h1>Chats</h1><button class="ghost" id="newBtn">+ New</button><button class="ghost" id="logoutBtn">Log out</button></header>
+    <div id="convos"></div>
+  </section>
+
+  <section id="chat" hidden>
+    <header><button class="ghost" id="backBtn">←</button><h1 id="chatTitle"></h1><button class="ghost" id="verifyBtn">🔑 Verify</button></header>
+    <div id="msgs"></div>
+    <div id="composer"><input id="msgInput" placeholder="Message" autocomplete="off"><button id="sendBtn">Send</button></div>
+  </section>
+</div>
+
+<dialog id="newDlg">
+  <h2>Start a chat</h2>
+  <input id="newUser" placeholder="Their username" autocapitalize="off">
+  <div class="row" style="margin-top:12px"><button class="ghost" id="newCancel">Cancel</button><button id="newGo">Start</button></div>
+</dialog>
+
+<dialog id="verDlg">
+  <h2>Safety number</h2>
+  <p style="margin-top:0;color:var(--muted);font-size:14px">Compare this number with your contact in person or by phone. If it matches on both sides, nobody is intercepting your chat.</p>
+  <div class="fp" id="fp"></div>
+  <div class="row" style="margin-top:12px"><button id="verClose">Close</button></div>
+</dialog>
+
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.13/dist/browsers/sodium.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js"></script>
+<script>
+const SUPABASE_URL = 'https://zfgsjxbyidodvcqiesof.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_k8g6t0PXk_Qlk-Q9WcFS7Q_N29jfVVK';
+const EMAIL_DOMAIN = 'chatuser.app'; // placeholder email domain; users never see it
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = id => document.getElementById(id);
+let me = null, profiles = {}, msgs = [], current = null, channel = null;
+
+const b64 = u => sodium.to_base64(u);
+const unb64 = s => sodium.from_base64(s);
+
+function show(name){ for (const s of ['auth','list','chat']) $(s).hidden = s !== name; }
+function toast(t){ const el = $('toast'); el.textContent = t; el.classList.add('on'); setTimeout(() => el.classList.remove('on'), 2500); }
+function friendly(e){
+  const m = (e && e.message) || String(e);
+  if (/invalid login/i.test(m)) return 'Wrong username or password';
+  if (/already registered|already exists|duplicate/i.test(m)) return 'That username is already taken';
+  return m;
+}
+
+/* ---------- Auth ---------- */
+async function submitAuth(mode){
+  const u = $('u').value.trim().toLowerCase(), p = $('p').value;
+  $('err').textContent = '';
+  if (!/^[a-z0-9_]{3,20}$/.test(u)) return $('err').textContent = 'Username: 3–20 letters, numbers or _';
+  if (p.length < 8) return $('err').textContent = 'Password must be at least 8 characters';
+  $('loginBtn').disabled = $('signupBtn').disabled = true;
+  try {
+    await sodium.ready;
+    const email = `${u}@${EMAIL_DOMAIN}`;
+    if (mode === 'signup'){
+      const kp = sodium.crypto_box_keypair();
+      const { data, error } = await sb.auth.signUp({ email, password: p });
+      if (error) throw error;
+      if (!data.session) throw new Error('Turn off "Confirm email" in Supabase → Authentication → Sign In / Providers → Email');
+      localStorage.setItem('sk:' + data.user.id, b64(kp.privateKey));
+      const { error: e2 } = await sb.from('profiles').insert({ id: data.user.id, username: u, public_key: b64(kp.publicKey) });
+      if (e2) throw e2;
+    } else {
+      const { error } = await sb.auth.signInWithPassword({ email, password: p });
+      if (error) throw error;
+    }
+    $('p').value = '';
+    await start();
+  } catch (e) { $('err').textContent = friendly(e); }
+  $('loginBtn').disabled = $('signupBtn').disabled = false;
+}
+
+async function start(){
+  await sodium.ready;
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return show('auth');
+  const uid = session.user.id;
+  let { data: prof } = await sb.from('profiles').select('*').eq('id', uid).maybeSingle();
+  let skStr = localStorage.getItem('sk:' + uid);
+
+  if (!prof || !skStr){
+    if (prof && !confirm('This device has no encryption key for your account. Create a new one? Your older messages will become unreadable.')){
+      await sb.auth.signOut(); return show('auth');
+    }
+    const kp = sodium.crypto_box_keypair();
+    const pub = b64(kp.publicKey);
+    const q = prof
+      ? sb.from('profiles').update({ public_key: pub }).eq('id', uid)
+      : sb.from('profiles').insert({ id: uid, username: session.user.email.split('@')[0], public_key: pub });
+    const { error } = await q;
+    if (error) throw error;
+    skStr = b64(kp.privateKey);
+    localStorage.setItem('sk:' + uid, skStr);
+    prof = { ...(prof || { id: uid, username: session.user.email.split('@')[0] }), public_key: pub };
+  }
+
+  me = { id: uid, username: prof.username, pk: prof.public_key, sk: unb64(skStr) };
+  profiles[uid] = prof;
+  const { data: rows, error } = await sb.from('messages').select('*').order('created_at', { ascending: true }).limit(2000);
+  if (error) throw error;
+  msgs = rows;
+  await loadProfiles(rows.flatMap(r => [r.sender_id, r.recipient_id]));
+  subscribe();
+  renderList();
+  show('list');
+}
+
+async function logout(){
+  if (channel) { sb.removeChannel(channel); channel = null; }
+  await sb.auth.signOut();
+  me = null; msgs = []; profiles = {}; current = null;
+  show('auth');
+}
+
+/* ---------- Data ---------- */
+async function loadProfiles(ids, force){
+  const need = [...new Set(ids)].filter(id => id && (force || !profiles[id]));
+  if (!need.length) return;
+  const { data } = await sb.from('profiles').select('*').in('id', need);
+  (data || []).forEach(p => profiles[p.id] = p);
+}
+
+function otherId(m){ return m.sender_id === me.id ? m.recipient_id : m.sender_id; }
+
+function decrypt(m){
+  if (m._t != null) return m._t;
+  try {
+    const other = profiles[otherId(m)];
+    const pt = sodium.crypto_box_open_easy(unb64(m.ciphertext), unb64(m.nonce), unb64(other.public_key), me.sk);
+    return (m._t = sodium.to_string(pt));
+  } catch { return null; }
+}
+
+function addMsg(m){
+  if (msgs.some(x => x.id === m.id)) return;
+  msgs.push(m);
+  renderList();
+  if (current && otherId(m) === current) renderMsgs();
+}
+
+function subscribe(){
+  if (channel) sb.removeChannel(channel);
+  channel = sb.channel('messages-feed')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async p => {
+      await loadProfiles([p.new.sender_id, p.new.recipient_id], true);
+      addMsg(p.new);
+    })
+    .subscribe();
+}
+
+/* ---------- Rendering ---------- */
+function fmtTime(iso){
+  const d = new Date(iso), now = new Date();
+  return d.toDateString() === now.toDateString()
+    ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+function renderList(){
+  const box = $('convos'); box.textContent = '';
+  const last = {};
+  msgs.forEach(m => last[otherId(m)] = m);
+  const ids = Object.keys(last).sort((a, b) => new Date(last[b].created_at) - new Date(last[a].created_at));
+  if (!ids.length){
+    const e = document.createElement('div'); e.className = 'empty';
+    e.textContent = 'No chats yet. Tap “+ New” and enter a username to start.';
+    box.appendChild(e); return;
+  }
+  ids.forEach(id => {
+    const m = last[id], d = document.createElement('div'); d.className = 'convo';
+    const n = document.createElement('b'); n.textContent = (profiles[id] || {}).username || 'Unknown';
+    const s = document.createElement('span'); s.textContent = (m.sender_id === me.id ? 'You: ' : '') + (decrypt(m) ?? '🔒 Can’t decrypt') + ' · ' + fmtTime(m.created_at);
+    d.append(n, s); d.onclick = () => openChat(id); box.appendChild(d);
+  });
+}
+
+function renderMsgs(){
+  const box = $('msgs'); box.textContent = '';
+  msgs.filter(m => otherId(m) === current).forEach(m => {
+    const t = decrypt(m), b = document.createElement('div');
+    b.className = 'b ' + (m.sender_id === me.id ? 'me' : 'them') + (t == null ? ' fail' : '');
+    b.textContent = t ?? '🔒 Can’t decrypt this message';
+    const sm = document.createElement('small'); sm.textContent = fmtTime(m.created_at);
+    b.appendChild(sm); box.appendChild(b);
+  });
+  box.scrollTop = box.scrollHeight;
+}
+
+async function openChat(id){
+  current = id;
+  $('chatTitle').textContent = (profiles[id] || {}).username || '';
+  renderMsgs(); show('chat');
+  await loadProfiles([id], true); // pick up any key change
+  msgs.forEach(m => { if (m._t == null) delete m._t; });
+  if (current === id) renderMsgs();
+}
+
+/* ---------- Actions ---------- */
+async function send(){
+  const t = $('msgInput').value.trim();
+  if (!t || !current) return;
+  $('msgInput').value = '';
+  try {
+    await loadProfiles([current], true);
+    const nonce = sodium.randombytes_buf(sodium.crypto_box_NONCEBYTES);
+    const ct = sodium.crypto_box_easy(t, nonce, unb64(profiles[current].public_key), me.sk);
+    const { data, error } = await sb.from('messages')
+      .insert({ sender_id: me.id, recipient_id: current, ciphertext: b64(ct), nonce: b64(nonce) })
+      .select().single();
+    if (error) throw error;
+    addMsg(data);
+  } catch (e) { $('msgInput').value = t; toast('Send failed: ' + friendly(e)); }
+}
+
+async function newChat(){
+  const u = $('newUser').value.trim().toLowerCase();
+  if (!u) return;
+  if (u === me.username) return toast('That’s you 🙂');
+  const { data } = await sb.from('profiles').select('*').eq('username', u).maybeSingle();
+  if (!data) return toast('User not found');
+  profiles[data.id] = data;
+  $('newDlg').close(); $('newUser').value = '';
+  openChat(data.id);
+}
+
+function showSafety(){
+  const [x, y] = [me.pk, profiles[current].public_key].sort();
+  const hex = sodium.to_hex(sodium.crypto_generichash(32, x + y)).slice(0, 30);
+  $('fp').textContent = hex.match(/.{5}/g).join(' ');
+  $('verDlg').showModal();
+}
+
+/* ---------- Wire up ---------- */
+$('loginBtn').onclick = () => submitAuth('login');
+$('signupBtn').onclick = () => submitAuth('signup');
+$('p').addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth('login'); });
+$('logoutBtn').onclick = logout;
+$('newBtn').onclick = () => { $('newDlg').showModal(); $('newUser').focus(); };
+$('newCancel').onclick = () => $('newDlg').close();
+$('newGo').onclick = newChat;
+$('newUser').addEventListener('keydown', e => { if (e.key === 'Enter') newChat(); });
+$('backBtn').onclick = () => { current = null; renderList(); show('list'); };
+$('verifyBtn').onclick = showSafety;
+$('verClose').onclick = () => $('verDlg').close();
+$('sendBtn').onclick = send;
+$('msgInput').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+
+start().catch(e => { console.error(e); show('auth'); $('err').textContent = friendly(e); });
+</script>
+</body>
+</html>
