@@ -73,6 +73,28 @@ hr{border:0;border-top:1px solid var(--border);margin:14px 0}
 #searchInput{flex:1}
 .pbody{display:flex;flex-direction:column;align-items:center;gap:6px;padding:24px 20px}
 .pbody .row{width:100%}
+.chead{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface);border-bottom:1px solid var(--border)}
+.peer{display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer}
+.peer .av{width:40px;height:40px;font-size:16px}
+.pn{display:flex;flex-direction:column;min-width:0}
+.pn b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pn span{font-size:12px;color:var(--muted)}
+.csearch{display:flex;gap:8px;align-items:center;padding:8px 12px;background:var(--surface)}
+.chip{background:var(--surface2);color:var(--accent2);padding:8px 14px;border-radius:16px;flex:none}
+.chip.on{background:var(--accent);color:var(--accent-text)}
+#composer{align-items:center;background:var(--surface);border-top:1px solid var(--border)}
+#composer input{border-radius:22px;background:var(--surface2);border-color:transparent}
+#sendBtn{width:44px;height:44px;padding:0;border-radius:50%;font-size:18px;flex:none}
+.blockbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;background:var(--surface);color:var(--muted)}
+.b.me,.b.them{border-radius:16px}
+.b small{display:inline;margin-left:8px;font-size:10px;opacity:.6}
+.b.pending{opacity:.6}
+#menuWrap{position:fixed;inset:0;z-index:30}
+.menu{position:absolute;top:58px;right:12px;min-width:220px;background:var(--surface2);border:1px solid var(--border);border-radius:14px;box-shadow:0 12px 30px rgba(0,0,0,.5);overflow:hidden}
+.menu button{display:block;width:100%;text-align:left;background:none;color:var(--text);border-radius:0;padding:13px 16px}
+.menu button.danger{color:var(--danger)}
+.menu button:active{background:var(--surface)}
+select{font:inherit;width:100%;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text)}
 </style>
 </head>
 <body>
@@ -121,9 +143,15 @@ hr{border:0;border-top:1px solid var(--border);margin:14px 0}
   </section>
 
   <section id="chat" hidden>
-    <header><button class="ghost" id="backBtn">←</button><h1 id="chatTitle"></h1><button class="ghost" id="verifyBtn">🔑 Verify</button><button class="ghost" id="clearBtn" title="Clear chat">🗑</button></header>
+    <div class="chead">
+      <button class="iconbtn" id="backBtn" aria-label="Back">←</button>
+      <div class="peer" id="peerBtn"><div id="chatAv"></div><div class="pn"><b id="chatTitle"></b><span id="chatSub"></span></div></div>
+      <button class="iconbtn" id="menuBtn" aria-label="More">⋮</button>
+    </div>
+    <div class="csearch" id="csearch" hidden><input id="csInput" placeholder="Search this chat"><button class="chip" id="csLinks">Links</button><button class="ghost" id="csClose">✕</button></div>
     <div id="msgs"></div>
-    <div id="composer"><input id="msgInput" placeholder="Message" autocomplete="off"><button id="sendBtn">Send</button></div>
+    <div id="composer"><input id="msgInput" placeholder="Message" autocomplete="off"><button id="sendBtn" aria-label="Send">➤</button></div>
+    <div class="blockbar" id="blockbar" hidden><span>You blocked this user.</span><button id="unblockBtn">Unblock</button></div>
   </section>
 </div>
 
@@ -187,6 +215,25 @@ hr{border:0;border-top:1px solid var(--border);margin:14px 0}
   <div id="rsMsg" class="hint" style="margin-top:8px;color:var(--danger)"></div>
   <div class="row"><button id="rsGo">Restore</button></div>
   <div class="row" style="margin-top:8px"><button class="ghost" id="rsFresh">Start fresh</button><button class="ghost" id="rsCancel">Cancel</button></div>
+</dialog>
+
+<div id="menuWrap" hidden><div class="menu" id="menu">
+  <button data-a="call">📞 Call</button>
+  <button data-a="search">🔍 Search in chat</button>
+  <button data-a="fav" id="mFav">⭐ Add to favorites</button>
+  <button data-a="verify">🔑 Verify encryption</button>
+  <button data-a="clear">🧹 Clear chat</button>
+  <button data-a="delete">🗑 Delete chat</button>
+  <button data-a="block" id="mBlock" class="danger">🚫 Block user</button>
+  <button data-a="report" class="danger">⚑ Report user</button>
+</div></div>
+
+<dialog id="repDlg">
+  <h2>Report user</h2>
+  <p class="hint">Chats are end-to-end encrypted, so only your reason is sent, never the messages.</p>
+  <select id="repReason"><option>Spam</option><option>Harassment or abuse</option><option>Inappropriate content</option><option>Impersonation</option><option>Other</option></select>
+  <textarea id="repNote" rows="3" placeholder="Add details (optional)" style="margin-top:8px"></textarea>
+  <div class="row" style="margin-top:12px"><button class="ghost" id="repCancel">Cancel</button><button id="repGo">Send report</button></div>
 </dialog>
 
 <div id="toast"></div>
@@ -276,6 +323,7 @@ async function start(){
   const { data: rows, error } = await sb.from('messages').select('*').order('created_at', { ascending: true }).limit(2000);
   if (error) throw error;
   msgs = rows;
+  await loadSettings();
   await loadProfiles(rows.flatMap(r => [r.sender_id, r.recipient_id]));
   subscribe();
   renderList();
@@ -344,8 +392,8 @@ function fmtTime(iso){
 function renderList(){
   const box = $('convos'); box.textContent = '';
   const last = {};
-  msgs.forEach(m => last[otherId(m)] = m);
-  const ids = Object.keys(last).sort((a, b) => new Date(last[b].created_at) - new Date(last[a].created_at));
+  msgs.filter(visible).forEach(m => last[otherId(m)] = m);
+  const ids = Object.keys(last).sort((a, b) => (st(b).favorite ? 1 : 0) - (st(a).favorite ? 1 : 0) || new Date(last[b].created_at) - new Date(last[a].created_at));
   if (!ids.length){
     const e = document.createElement('div'); e.className = 'empty';
     e.textContent = 'No chats yet. Tap “+ New” and enter a username to start.';
@@ -356,46 +404,67 @@ function renderList(){
     const n = document.createElement('b'); n.textContent = (profiles[id] || {}).username || 'Unknown';
     const s = document.createElement('span'); s.textContent = (m.sender_id === me.id ? 'You: ' : '') + (decrypt(m) ?? '🔒 Can’t decrypt') + ' · ' + fmtTime(m.created_at);
     const tx = document.createElement('div'); tx.className = 'tx'; tx.append(n, s);
-    d.append(avatar(n.textContent), tx); d.onclick = () => openChat(id); box.appendChild(d);
+    d.append(avatar((profiles[id] || {}).username), tx); if (st(id).favorite) n.textContent += ' ⭐';
+    d.onclick = () => openChat(id); box.appendChild(d);
   });
 }
 
 function renderMsgs(){
   const box = $('msgs'); box.textContent = '';
-  msgs.filter(m => otherId(m) === current).forEach(m => {
+  const list = msgs.filter(m => visible(m) && otherId(m) === current)
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    .filter(m => {
+      if (!cs.q && !cs.links) return true;
+      const t = decrypt(m) || '';
+      return (!cs.q || t.toLowerCase().includes(cs.q)) && (!cs.links || /https?:\/\/\S+/i.test(t));
+    });
+  if (!list.length){
+    const e = document.createElement('div'); e.className = 'empty';
+    e.textContent = (cs.q || cs.links) ? 'No matches in this chat' : 'No messages yet. Say hi 👋';
+    box.appendChild(e); return;
+  }
+  list.forEach(m => {
     const t = decrypt(m), b = document.createElement('div');
-    b.className = 'b ' + (m.sender_id === me.id ? 'me' : 'them') + (t == null ? ' fail' : '');
-    b.textContent = t ?? '🔒 Can’t decrypt this message';
+    b.className = 'b ' + (m.sender_id === me.id ? 'me' : 'them') + (t == null ? ' fail' : '') + (m.pending ? ' pending' : '');
+    const tx = document.createElement('span'); tx.textContent = t ?? '🔒 Can’t decrypt this message';
     const sm = document.createElement('small'); sm.textContent = fmtTime(m.created_at);
-    b.appendChild(sm); box.appendChild(b);
+    b.append(tx, sm); box.appendChild(b);
   });
   box.scrollTop = box.scrollHeight;
 }
 
 async function openChat(id){
   current = id;
-  $('chatTitle').textContent = (profiles[id] || {}).username || '';
+  closeCS(); chatChrome();
   renderMsgs(); show('chat');
   await loadProfiles([id], true); // pick up any key change
   msgs.forEach(m => { if (m._t == null) delete m._t; });
-  if (current === id) renderMsgs();
+  if (current === id){ chatChrome(); renderMsgs(); }
 }
 
 /* ---------- Actions ---------- */
 async function send(){
   const t = $('msgInput').value.trim();
-  if (!t || !current) return;
+  if (!t || !current || st(current).blocked) return;
   $('msgInput').value = '';
+  const peer = current;
+  const tmp = { id: 'tmp' + Date.now() + Math.random(), sender_id: me.id, recipient_id: peer, created_at: new Date().toISOString(), _t: t, pending: true };
+  msgs.push(tmp); renderMsgs(); renderList();
   try {
-    await loadProfiles([current], true);
     const nonce = nacl.randomBytes(nacl.box.nonceLength);
-    const ct = nacl.box(nacl.util.decodeUTF8(t), nonce, unb64(profiles[current].public_key), me.sk);
+    const ct = nacl.box(nacl.util.decodeUTF8(t), nonce, unb64(profiles[peer].public_key), me.sk);
     const { data, error } = await sb.from('messages')
-      .insert({ sender_id: me.id, recipient_id: current, ciphertext: b64(ct), nonce: b64(nonce) })
+      .insert({ sender_id: me.id, recipient_id: peer, ciphertext: b64(ct), nonce: b64(nonce) })
       .select().single();
     if (error) throw error;
-    addMsg(data);
-  } catch (e) { $('msgInput').value = t; toast('Send failed: ' + friendly(e)); }
+    msgs = msgs.filter(x => x !== tmp);
+    const ex = msgs.find(x => x.id === data.id);
+    if (ex) ex._t = t; else { data._t = t; msgs.push(data); }
+  } catch (e) {
+    msgs = msgs.filter(x => x !== tmp);
+    $('msgInput').value = t; toast('Message not delivered');
+  }
+  renderList(); if (current === peer) renderMsgs();
 }
 
 async function newChat(){
@@ -570,8 +639,8 @@ function openSearch(){ $('searchInput').value = ''; renderSearch(); show('search
 function renderSearch(){
   const q = $('searchInput').value.trim().toLowerCase(), box = $('searchResults'); box.textContent = '';
   const sec = t => { const h = document.createElement('div'); h.className = 'sec'; h.textContent = t; box.appendChild(h); };
-  const last = {}; msgs.forEach(m => last[otherId(m)] = m);
-  const ids = Object.keys(last).sort((a, b) => new Date(last[b].created_at) - new Date(last[a].created_at));
+  const last = {}; msgs.filter(visible).forEach(m => last[otherId(m)] = m);
+  const ids = Object.keys(last).sort((a, b) => (st(b).favorite ? 1 : 0) - (st(a).favorite ? 1 : 0) || new Date(last[b].created_at) - new Date(last[a].created_at));
   const found = ids.filter(id => !q || ((profiles[id] || {}).username || '').includes(q));
   if (found.length){ sec(q ? 'Contacts' : 'Recent'); found.forEach(id => box.appendChild(rowEl(id, 'Tap to open chat'))); }
   if (q){
@@ -615,6 +684,47 @@ function renderSearch(){
   window.addEventListener('resize', () => apply(idx, false));
 })();
 
+/* ---------- Stage 2: chat screen, menu, settings ---------- */
+let settings = {};
+const cs = { q: '', links: false };
+function st(id){ return settings[id] || {}; }
+async function loadSettings(){
+  const { data } = await sb.from('chat_settings').select('*');
+  settings = {}; (data || []).forEach(r => settings[r.peer_id] = r);
+}
+async function setSetting(id, patch){
+  const { error } = await sb.from('chat_settings').upsert({ user_id: me.id, peer_id: id, ...patch }, { onConflict: 'user_id,peer_id' });
+  if (error){ toast('Could not save: ' + friendly(error)); return false; }
+  settings[id] = { ...(settings[id] || {}), peer_id: id, ...patch };
+  return true;
+}
+function visible(m){
+  const d = st(otherId(m)).deleted_before;
+  return !d || new Date(m.created_at) > new Date(d);
+}
+function chatChrome(){
+  const p = profiles[current] || {}, f = st(current), blocked = !!f.blocked;
+  $('chatTitle').textContent = p.username || '';
+  $('chatAv').replaceChildren(avatar(p.username));
+  $('chatSub').textContent = f.favorite ? '⭐ Favorite' : '';
+  $('composer').hidden = blocked; $('blockbar').hidden = !blocked;
+  $('mFav').textContent = f.favorite ? '⭐ Remove from favorites' : '⭐ Add to favorites';
+  $('mBlock').textContent = blocked ? '✅ Unblock user' : '🚫 Block user';
+}
+function openCS(){ $('csearch').hidden = false; $('csInput').focus(); }
+function closeCS(){ cs.q = ''; cs.links = false; $('csInput').value = ''; $('csLinks').classList.remove('on'); $('csearch').hidden = true; }
+async function deleteChat(id){
+  if (!confirm('Delete this chat from your list? It stays for the other person, and new messages will bring it back.')) return;
+  let mx = 0; msgs.forEach(m => { if (otherId(m) === id && !m.pending) mx = Math.max(mx, +new Date(m.created_at)); });
+  if (mx && !(await setSetting(id, { deleted_before: new Date(mx + 1).toISOString() }))) return;
+  goList();
+}
+async function toggleBlock(id){
+  const b = !st(id).blocked;
+  if (b && !confirm(`Block ${(profiles[id] || {}).username}? They won’t be able to message you.`)) return;
+  if (await setSetting(id, { blocked: b })){ chatChrome(); toast(b ? 'User blocked' : 'User unblocked'); }
+}
+
 /* ---------- Wire up ---------- */
 $('backupBtn').onclick = openBackupDlg;
 $('searchBtn').onclick = openSearch;
@@ -645,8 +755,32 @@ $('backBtn').onclick = () => {
 };
 $('leaveKeep').onclick = () => { $('leaveDlg').close(); goList(); };
 $('leaveClear').onclick = async () => { const id = current; if (await clearChat(id)){ $('leaveDlg').close(); goList(); } };
-$('clearBtn').onclick = async () => {
-  if (current && confirm('Clear all messages in this chat? This deletes them for both of you.')) await clearChat(current);
+$('menuBtn').onclick = () => { $('menuWrap').hidden = false; };
+$('menuWrap').onclick = e => { if (e.target.id === 'menuWrap') $('menuWrap').hidden = true; };
+$('menu').onclick = async e => {
+  const a = e.target.closest('button') && e.target.closest('button').dataset.a;
+  if (!a) return;
+  $('menuWrap').hidden = true;
+  const id = current;
+  if (a === 'call') toast('Calls arrive in a later update');
+  else if (a === 'search') openCS();
+  else if (a === 'fav'){ if (await setSetting(id, { favorite: !st(id).favorite })){ chatChrome(); renderList(); } }
+  else if (a === 'verify') showSafety();
+  else if (a === 'clear'){ if (confirm('Clear all messages in this chat? This deletes them for both of you.')) await clearChat(id); }
+  else if (a === 'delete') deleteChat(id);
+  else if (a === 'block') toggleBlock(id);
+  else if (a === 'report') $('repDlg').showModal();
+};
+$('unblockBtn').onclick = () => toggleBlock(current);
+$('peerBtn').onclick = () => toast('Contact details arrive in the next stage');
+$('csInput').addEventListener('input', e => { cs.q = e.target.value.trim().toLowerCase(); renderMsgs(); });
+$('csLinks').onclick = () => { cs.links = !cs.links; $('csLinks').classList.toggle('on', cs.links); renderMsgs(); };
+$('csClose').onclick = () => { closeCS(); renderMsgs(); };
+$('repCancel').onclick = () => $('repDlg').close();
+$('repGo').onclick = async () => {
+  const { error } = await sb.from('reports').insert({ reporter_id: me.id, reported_id: current, reason: $('repReason').value, note: $('repNote').value.trim() || null });
+  $('repDlg').close(); $('repNote').value = '';
+  toast(error ? 'Could not send report' : 'Report sent. Thank you.');
 };
 $('roomCreate').onclick = createRoom;
 $('roomJoin').onclick = joinRoom;
@@ -657,7 +791,6 @@ $('roomCancel').onclick = async () => {
   const c = $('roomShow').textContent; $('roomDlg').close();
   try { await sb.rpc('cancel_room', { p_code: c }); } catch {}
 };
-$('verifyBtn').onclick = showSafety;
 $('verClose').onclick = () => $('verDlg').close();
 $('sendBtn').onclick = send;
 $('msgInput').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
