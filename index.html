@@ -95,6 +95,27 @@ hr{border:0;border-top:1px solid var(--border);margin:14px 0}
 .menu button.danger{color:var(--danger)}
 .menu button:active{background:var(--surface)}
 select{font:inherit;width:100%;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg);color:var(--text)}
+.dbody{flex:1;overflow-y:auto;padding:4px 14px 24px;display:flex;flex-direction:column;gap:14px}
+.dcard{background:var(--surface2);border-radius:16px;padding:14px}
+.dlabel{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px}
+.dprof{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0}
+.dprof h2{margin:8px 0 0}
+.dprof .hint{margin:0}
+.dact{display:flex;gap:10px}
+.act{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--surface2);color:var(--accent2);border-radius:16px;padding:12px 6px;font-size:13px}
+.act span{font-size:22px}
+.acc{width:100%;display:flex;justify-content:space-between;background:none;color:var(--text);padding:0;border-radius:0;font-weight:600}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.lk{padding:10px 0;border-bottom:1px solid var(--border);overflow-wrap:anywhere}
+.lk a{color:var(--accent)}
+.lk small{display:block;color:var(--muted)}
+.trow{display:flex;align-items:center;justify-content:space-between;padding:8px 0}
+.red{color:var(--danger)}
+.sw{width:50px;height:30px;border-radius:999px;background:#3a2d5c;position:relative;padding:0;flex:none;transition:background .2s}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:transform .2s}
+.sw.on{background:var(--accent)}
+.sw.red.on{background:var(--danger)}
+.sw.on::after{transform:translateX(20px)}
 </style>
 </head>
 <body>
@@ -139,6 +160,30 @@ select{font:inherit;width:100%;padding:12px;border:1px solid var(--border);borde
       <p class="hint">More profile and settings options arrive in the next update.</p>
       <div class="row"><button id="backupBtn">🔑 Back up key</button></div>
       <div class="row" style="margin-top:8px"><button class="ghost" id="logoutBtn" style="border:1px solid var(--border)">Log out</button></div>
+    </div>
+  </section>
+
+  <section id="details" hidden>
+    <div class="top"><button class="iconbtn" id="detBack">←</button><h1 class="brand" style="font-size:20px">Contact info</h1></div>
+    <div class="dbody">
+      <div class="dcard"><div class="dlabel">Bio</div><div id="detBio"></div></div>
+      <div class="dprof"><div id="detAv"></div><h2 id="detName"></h2><p class="hint" id="detUser"></p><p class="hint" id="detPhone"></p></div>
+      <div class="dact">
+        <button class="act" id="detCall"><span>📞</span>Call</button>
+        <button class="act" id="detVideo"><span>🎥</span>Video</button>
+        <button class="act" id="detEdit"><span>✏️</span>Edit name</button>
+      </div>
+      <div class="dcard">
+        <button class="acc" id="mediaHead"><span>Media, links and docs</span><span id="mediaArrow">▾</span></button>
+        <div id="mediaBody" hidden>
+          <div class="tabs"><button class="chip on" data-t="images">Images</button><button class="chip" data-t="videos">Videos</button><button class="chip" data-t="docs">Docs</button><button class="chip" data-t="links">Links</button></div>
+          <div id="mediaList"></div>
+        </div>
+      </div>
+      <div class="dcard">
+        <div class="trow"><span>🔒 Lock this chat</span><button class="sw" id="swLock" role="switch" aria-checked="false"></button></div>
+        <div class="trow"><span class="red">🚫 Block this user</span><button class="sw red" id="swBlock" role="switch" aria-checked="false"></button></div>
+      </div>
     </div>
   </section>
 
@@ -217,6 +262,21 @@ select{font:inherit;width:100%;padding:12px;border:1px solid var(--border);borde
   <div class="row" style="margin-top:8px"><button class="ghost" id="rsFresh">Start fresh</button><button class="ghost" id="rsCancel">Cancel</button></div>
 </dialog>
 
+<dialog id="pwDlg">
+  <h2>Locked chat</h2>
+  <p class="hint">Enter your account password to open this chat.</p>
+  <input id="pwIn" type="password" placeholder="Password" autocomplete="current-password">
+  <div id="pwMsg" class="hint" style="color:var(--danger);margin-top:8px"></div>
+  <div class="row"><button class="ghost" id="pwCancel">Cancel</button><button id="pwGo">Unlock</button></div>
+</dialog>
+
+<dialog id="nickDlg">
+  <h2>Edit name</h2>
+  <p class="hint">Only you see this name. It doesn’t change their username.</p>
+  <input id="nickIn" maxlength="30" placeholder="Name for this contact">
+  <div class="row" style="margin-top:12px"><button class="ghost" id="nickCancel">Cancel</button><button id="nickSave">Save</button></div>
+</dialog>
+
 <div id="menuWrap" hidden><div class="menu" id="menu">
   <button data-a="call">📞 Call</button>
   <button data-a="search">🔍 Search in chat</button>
@@ -253,7 +313,7 @@ let me = null, profiles = {}, msgs = [], current = null, channel = null;
 const b64 = u => nacl.util.encodeBase64(u);
 const unb64 = s => nacl.util.decodeBase64(s);
 
-function show(name){ for (const s of ['auth','list','chat','search','profile']) $(s).hidden = s !== name; if (name === 'list' && window.layoutHome) layoutHome(); }
+function show(name){ for (const s of ['auth','list','chat','search','profile','details']) $(s).hidden = s !== name; if (name === 'list' && window.layoutHome) layoutHome(); }
 function toast(t){ const el = $('toast'); el.textContent = t; el.classList.add('on'); setTimeout(() => el.classList.remove('on'), 2500); }
 function friendly(e){
   const m = (e && e.message) || String(e);
@@ -318,6 +378,7 @@ async function start(){
 
   me = { id: uid, username: prof.username, pk: prof.public_key, sk: unb64(skStr), backedUp: !!prof.key_backup };
   profiles[uid] = prof;
+  me.email = session.user.email;
   $('banner').hidden = me.backedUp;
   $('avatarBtn').replaceChildren(avatar(me.username));
   const { data: rows, error } = await sb.from('messages').select('*').order('created_at', { ascending: true }).limit(2000);
@@ -401,8 +462,8 @@ function renderList(){
   }
   ids.forEach(id => {
     const m = last[id], d = document.createElement('div'); d.className = 'convo';
-    const n = document.createElement('b'); n.textContent = (profiles[id] || {}).username || 'Unknown';
-    const s = document.createElement('span'); s.textContent = (m.sender_id === me.id ? 'You: ' : '') + (decrypt(m) ?? '🔒 Can’t decrypt') + ' · ' + fmtTime(m.created_at);
+    const n = document.createElement('b'); n.textContent = dname(id);
+    const s = document.createElement('span'); s.textContent = st(id).locked ? '🔒 Locked chat' : (m.sender_id === me.id ? 'You: ' : '') + (decrypt(m) ?? '🔒 Can’t decrypt') + ' · ' + fmtTime(m.created_at);
     const tx = document.createElement('div'); tx.className = 'tx'; tx.append(n, s);
     d.append(avatar((profiles[id] || {}).username), tx); if (st(id).favorite) n.textContent += ' ⭐';
     d.onclick = () => openChat(id); box.appendChild(d);
@@ -434,6 +495,7 @@ function renderMsgs(){
 }
 
 async function openChat(id){
+  if (st(id).locked && !(await askPassword())) return;
   current = id;
   closeCS(); chatChrome();
   renderMsgs(); show('chat');
@@ -630,10 +692,10 @@ function avatar(name, cls){
 }
 function rowEl(id, sub){
   const d = document.createElement('div'); d.className = 'convo';
-  const n = document.createElement('b'); n.textContent = (profiles[id] || {}).username || 'Unknown';
+  const n = document.createElement('b'); n.textContent = dname(id);
   const t = document.createElement('span'); t.textContent = sub;
   const tx = document.createElement('div'); tx.className = 'tx'; tx.append(n, t);
-  d.append(avatar(n.textContent), tx); d.onclick = () => openChat(id); return d;
+  d.append(avatar((profiles[id] || {}).username), tx); d.onclick = () => openChat(id); return d;
 }
 function openSearch(){ $('searchInput').value = ''; renderSearch(); show('search'); $('searchInput').focus(); }
 function renderSearch(){
@@ -641,10 +703,10 @@ function renderSearch(){
   const sec = t => { const h = document.createElement('div'); h.className = 'sec'; h.textContent = t; box.appendChild(h); };
   const last = {}; msgs.filter(visible).forEach(m => last[otherId(m)] = m);
   const ids = Object.keys(last).sort((a, b) => (st(b).favorite ? 1 : 0) - (st(a).favorite ? 1 : 0) || new Date(last[b].created_at) - new Date(last[a].created_at));
-  const found = ids.filter(id => !q || ((profiles[id] || {}).username || '').includes(q));
+  const found = ids.filter(id => !q || (dname(id) + ' ' + ((profiles[id] || {}).username || '')).toLowerCase().includes(q));
   if (found.length){ sec(q ? 'Contacts' : 'Recent'); found.forEach(id => box.appendChild(rowEl(id, 'Tap to open chat'))); }
   if (q){
-    const hits = msgs.filter(m => (decrypt(m) || '').toLowerCase().includes(q)).slice(-30).reverse();
+    const hits = msgs.filter(m => visible(m) && !st(otherId(m)).locked && (decrypt(m) || '').toLowerCase().includes(q)).slice(-30).reverse();
     if (hits.length){ sec('Messages'); hits.forEach(m => box.appendChild(rowEl(otherId(m), decrypt(m)))); }
   }
   if (!box.children.length){ const e = document.createElement('div'); e.className = 'empty'; e.textContent = q ? 'No matches found' : 'No contacts yet'; box.appendChild(e); }
@@ -704,7 +766,7 @@ function visible(m){
 }
 function chatChrome(){
   const p = profiles[current] || {}, f = st(current), blocked = !!f.blocked;
-  $('chatTitle').textContent = p.username || '';
+  $('chatTitle').textContent = dname(current);
   $('chatAv').replaceChildren(avatar(p.username));
   $('chatSub').textContent = f.favorite ? '⭐ Favorite' : '';
   $('composer').hidden = blocked; $('blockbar').hidden = !blocked;
@@ -721,8 +783,64 @@ async function deleteChat(id){
 }
 async function toggleBlock(id){
   const b = !st(id).blocked;
-  if (b && !confirm(`Block ${(profiles[id] || {}).username}? They won’t be able to message you.`)) return;
+  if (b && !confirm(`Block ${dname(id)}? They won’t be able to message you.`)) return;
   if (await setSetting(id, { blocked: b })){ chatChrome(); toast(b ? 'User blocked' : 'User unblocked'); }
+}
+
+/* ---------- Stage 3: contact details, nickname, lock ---------- */
+let mediaTab = 'links';
+function dname(id){ return st(id).nickname || (profiles[id] || {}).username || 'Unknown'; }
+function askPassword(){
+  return new Promise(res => {
+    const d = $('pwDlg'); let done = false;
+    $('pwIn').value = ''; $('pwMsg').textContent = '';
+    const fin = v => { if (done) return; done = true; if (d.open) d.close(); res(v); };
+    $('pwGo').onclick = async () => {
+      const pw = $('pwIn').value; if (!pw) return;
+      $('pwGo').disabled = true;
+      const { error } = await sb.auth.signInWithPassword({ email: me.email, password: pw });
+      $('pwGo').disabled = false;
+      if (error) { $('pwMsg').textContent = 'Wrong password'; return; }
+      fin(true);
+    };
+    $('pwCancel').onclick = () => fin(false);
+    d.addEventListener('cancel', () => fin(false), { once: true });
+    d.showModal(); $('pwIn').focus();
+  });
+}
+function setSw(b, on){ b.classList.toggle('on', on); b.setAttribute('aria-checked', on); }
+function fillDetails(){
+  const p = profiles[current] || {}, f = st(current);
+  $('detBio').textContent = p.bio || 'No bio yet';
+  $('detAv').replaceChildren(avatar(p.username, 'big'));
+  $('detName').textContent = dname(current);
+  $('detUser').textContent = '@' + (p.username || '');
+  $('detPhone').textContent = p.phone ? '📱 ' + p.phone : '';
+  setSw($('swLock'), !!f.locked); setSw($('swBlock'), !!f.blocked);
+  renderMedia();
+}
+function openDetails(id){
+  if (!id) return;
+  current = id; $('mediaBody').hidden = true; $('mediaArrow').textContent = '▾';
+  fillDetails(); show('details');
+}
+function renderMedia(){
+  const box = $('mediaList'); box.textContent = '';
+  document.querySelectorAll('#mediaBody .tabs .chip').forEach(b => b.classList.toggle('on', b.dataset.t === mediaTab));
+  const empty = t => { const e = document.createElement('div'); e.className = 'empty'; e.textContent = t; box.appendChild(e); };
+  if (mediaTab !== 'links') return empty('Nothing shared yet. Photos, videos and documents will appear here once sharing is added.');
+  const items = [];
+  msgs.filter(m => visible(m) && otherId(m) === current && !m.pending)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .forEach(m => (((decrypt(m) || '').match(/https?:\/\/[^\s<>"']+/gi)) || []).forEach(u => items.push({ u, m })));
+  if (!items.length) return empty('No links shared yet.');
+  items.forEach(({ u, m }) => {
+    let href; try { href = new URL(u).href; } catch { return; }
+    const d = document.createElement('div'); d.className = 'lk';
+    const a = document.createElement('a'); a.href = href; a.textContent = u; a.target = '_blank'; a.rel = 'noopener noreferrer';
+    const sm = document.createElement('small'); sm.textContent = (m.sender_id === me.id ? 'You' : dname(otherId(m))) + ' · ' + fmtTime(m.created_at);
+    d.append(a, sm); box.appendChild(d);
+  });
 }
 
 /* ---------- Wire up ---------- */
@@ -772,7 +890,23 @@ $('menu').onclick = async e => {
   else if (a === 'report') $('repDlg').showModal();
 };
 $('unblockBtn').onclick = () => toggleBlock(current);
-$('peerBtn').onclick = () => toast('Contact details arrive in the next stage');
+$('peerBtn').onclick = () => openDetails(current);
+$('detBack').onclick = () => { chatChrome(); renderMsgs(); show('chat'); };
+$('detCall').onclick = () => toast('Calls arrive in a later update');
+$('detVideo').onclick = () => toast('Video calls arrive in a later update');
+$('detEdit').onclick = () => { $('nickIn').value = st(current).nickname || ''; $('nickDlg').showModal(); $('nickIn').focus(); };
+$('nickCancel').onclick = () => $('nickDlg').close();
+$('nickSave').onclick = async () => {
+  const v = $('nickIn').value.trim().slice(0, 30);
+  if (await setSetting(current, { nickname: v || null })){ $('nickDlg').close(); fillDetails(); chatChrome(); renderList(); }
+};
+$('mediaHead').onclick = () => { const o = $('mediaBody').hidden; $('mediaBody').hidden = !o; $('mediaArrow').textContent = o ? '▴' : '▾'; if (o) renderMedia(); };
+document.querySelectorAll('#mediaBody .tabs .chip').forEach(b => b.onclick = () => { mediaTab = b.dataset.t; renderMedia(); });
+$('swLock').onclick = async () => {
+  const on = !st(current).locked;
+  if (await setSetting(current, { locked: on })){ fillDetails(); renderList(); toast(on ? 'Chat locked. Your password is needed to open it.' : 'Chat unlocked'); }
+};
+$('swBlock').onclick = async () => { await toggleBlock(current); fillDetails(); };
 $('csInput').addEventListener('input', e => { cs.q = e.target.value.trim().toLowerCase(); renderMsgs(); });
 $('csLinks').onclick = () => { cs.links = !cs.links; $('csLinks').classList.toggle('on', cs.links); renderMsgs(); };
 $('csClose').onclick = () => { closeCS(); renderMsgs(); };
