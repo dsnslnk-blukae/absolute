@@ -116,6 +116,31 @@ select{font:inherit;width:100%;padding:12px;border:1px solid var(--border);borde
 .sw.on{background:var(--accent)}
 .sw.red.on{background:var(--danger)}
 .sw.on::after{transform:translateX(20px)}
+.sbody{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;padding:16px}
+.ctr{align-self:center;text-align:center}
+.scard{background:var(--surface);border:1px solid var(--border);border-radius:18px;overflow:hidden}
+.scard.pad{padding:14px 16px}
+.dlabel{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+.srow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border)}
+.scard > .srow:last-child{border-bottom:0}
+.srow.tap{cursor:pointer}
+.srow .r{color:var(--muted);font-size:14px}
+.pr{display:flex;gap:6px;align-items:center}
+.pr select{width:auto}
+.wide{width:100%}
+.ghost.wide{border:1px solid var(--border)}
+.swatch{display:inline-block;width:22px;height:22px;border-radius:50%;margin-left:4px;vertical-align:middle}
+.pill{position:relative;width:50px;height:28px;display:inline-block;flex:none}
+.pill input{position:absolute;inset:0;opacity:0;width:100%;height:100%;margin:0;padding:0;border:0;cursor:pointer;z-index:1}
+.pill i{position:absolute;inset:0;background:var(--surface2);border-radius:14px;transition:background .2s}
+.pill i::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:var(--accent2);transition:transform .2s}
+.pill input:checked+i{background:var(--accent)}
+.pill input:checked+i::after{transform:translateX(22px);background:var(--accent-text)}
+.pill.red input:checked+i{background:var(--danger)}
+textarea{resize:none}
+.card{border-color:var(--border)}
+.convo{border-bottom-color:var(--border)}
+.banner{background:var(--surface2)}
 </style>
 </head>
 <body>
@@ -155,12 +180,21 @@ select{font:inherit;width:100%;padding:12px;border:1px solid var(--border);borde
 
   <section id="profile" hidden>
     <div class="top"><button class="iconbtn" id="profBack">←</button><h1 class="brand" style="font-size:20px">Profile</h1></div>
-    <div class="pbody">
-      <div id="profAv"></div><h2 id="profName" style="margin:8px 0 0"></h2>
-      <p class="hint">More profile and settings options arrive in the next update.</p>
-      <div class="row"><button id="backupBtn">🔑 Back up key</button></div>
-      <div class="row" style="margin-top:8px"><button class="ghost" id="logoutBtn" style="border:1px solid var(--border)">Log out</button></div>
+    <div class="sbody">
+      <div class="ctr" id="profAv"></div>
+      <h2 class="ctr" id="profName" style="margin:0"></h2>
+      <div class="hint ctr" id="profUser" style="margin:0"></div>
+      <div class="scard pad"><div class="dlabel">Bio</div><div id="profBio"></div></div>
+      <div class="scard pad"><div class="dlabel">Email</div><div id="profEmail"></div><div class="dlabel" style="margin-top:12px">Number</div><div id="profPhone"></div></div>
+      <button class="wide" id="settingsBtn">⚙ Settings</button>
+      <button class="ghost wide" id="backupBtn">🔑 Back up key</button>
+      <button class="ghost wide" id="logoutBtn">Log out</button>
     </div>
+  </section>
+
+  <section id="settings" hidden>
+    <div class="top"><button class="iconbtn" id="setBack">←</button><h1 class="brand" id="setTitle" style="font-size:20px">Settings</h1></div>
+    <div class="sbody" id="sbody"></div>
   </section>
 
   <section id="details" hidden>
@@ -262,6 +296,14 @@ select{font:inherit;width:100%;padding:12px;border:1px solid var(--border);borde
   <div class="row" style="margin-top:8px"><button class="ghost" id="rsFresh">Start fresh</button><button class="ghost" id="rsCancel">Cancel</button></div>
 </dialog>
 
+<dialog id="cnDlg">
+  <h2 id="cnTitle"></h2>
+  <div class="srow" style="padding:8px 0;border:0"><span>🔕 Mute this chat</span><label class="pill"><input type="checkbox" id="cnMute"><i></i></label></div>
+  <p class="hint" style="margin:8px 0 4px">Message sound</p><select id="cnSound"></select>
+  <p class="hint" style="margin:10px 0 4px">Call ringtone</p><select id="cnRing"></select>
+  <div class="row" style="margin-top:14px"><button class="ghost" id="cnCancel">Cancel</button><button id="cnSave">Save</button></div>
+</dialog>
+
 <dialog id="pwDlg">
   <h2>Locked chat</h2>
   <p class="hint">Enter your account password to open this chat.</p>
@@ -313,7 +355,7 @@ let me = null, profiles = {}, msgs = [], current = null, channel = null;
 const b64 = u => nacl.util.encodeBase64(u);
 const unb64 = s => nacl.util.decodeBase64(s);
 
-function show(name){ for (const s of ['auth','list','chat','search','profile','details']) $(s).hidden = s !== name; if (name === 'list' && window.layoutHome) layoutHome(); }
+function show(name){ for (const s of ['auth','list','chat','search','profile','details','settings']) $(s).hidden = s !== name; if (name === 'list' && window.layoutHome) layoutHome(); }
 function toast(t){ const el = $('toast'); el.textContent = t; el.classList.add('on'); setTimeout(() => el.classList.remove('on'), 2500); }
 function friendly(e){
   const m = (e && e.message) || String(e);
@@ -379,19 +421,25 @@ async function start(){
   me = { id: uid, username: prof.username, pk: prof.public_key, sk: unb64(skStr), backedUp: !!prof.key_backup };
   profiles[uid] = prof;
   me.email = session.user.email;
+  me.showOnline = prof.show_online !== false;
   $('banner').hidden = me.backedUp;
   $('avatarBtn').replaceChildren(avatar(me.username));
   const { data: rows, error } = await sb.from('messages').select('*').order('created_at', { ascending: true }).limit(2000);
   if (error) throw error;
   msgs = rows;
   await loadSettings();
+  await loadPrefs();
+  await loadPhotos([uid]);
   await loadProfiles(rows.flatMap(r => [r.sender_id, r.recipient_id]));
   subscribe();
+  startPresence();
   renderList();
   show('list');
 }
 
 async function logout(){
+  if (presCh){ sb.removeChannel(presCh); presCh = null; }
+  sview = 'main';
   if (channel) { sb.removeChannel(channel); channel = null; }
   await sb.auth.signOut();
   me = null; msgs = []; profiles = {}; current = null;
@@ -404,6 +452,7 @@ async function loadProfiles(ids, force){
   if (!need.length) return;
   const { data } = await sb.from('profiles').select('*').in('id', need);
   (data || []).forEach(p => profiles[p.id] = p);
+  await loadPhotos(need);
 }
 
 function otherId(m){ return m.sender_id === me.id ? m.recipient_id : m.sender_id; }
@@ -431,6 +480,7 @@ function subscribe(){
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, async p => {
       await loadProfiles([p.new.sender_id, p.new.recipient_id], true);
       addMsg(p.new);
+      notifyIncoming(p.new);
     })
     .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, p => {
       const id = p.old && p.old.id;
@@ -687,7 +737,9 @@ function avatar(name, cls){
   const d = document.createElement('div'); d.className = 'av ' + (cls || '');
   const n = name || '?'; d.textContent = n[0].toUpperCase();
   let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 360;
-  d.style.background = `hsl(${255 + (h % 50)} 62% 76%)`;
+  d.style.background = `hsl(${themeHue + (h % 50)} 62% 76%)`;
+  const ph = photoByName[n];
+  if (ph){ d.textContent = ''; d.style.backgroundImage = `url("${ph}")`; d.style.backgroundSize = 'cover'; d.style.backgroundPosition = 'center'; }
   return d;
 }
 function rowEl(id, sub){
@@ -768,7 +820,8 @@ function chatChrome(){
   const p = profiles[current] || {}, f = st(current), blocked = !!f.blocked;
   $('chatTitle').textContent = dname(current);
   $('chatAv').replaceChildren(avatar(p.username));
-  $('chatSub').textContent = f.favorite ? '⭐ Favorite' : '';
+  const on = me.showOnline && online.has(current);
+  $('chatSub').textContent = (on ? '● Online' : '') + (f.favorite ? (on ? ' · ' : '') + '⭐ Favorite' : '');
   $('composer').hidden = blocked; $('blockbar').hidden = !blocked;
   $('mFav').textContent = f.favorite ? '⭐ Remove from favorites' : '⭐ Add to favorites';
   $('mBlock').textContent = blocked ? '✅ Unblock user' : '🚫 Block user';
@@ -789,7 +842,7 @@ async function toggleBlock(id){
 
 /* ---------- Stage 3: contact details, nickname, lock ---------- */
 let mediaTab = 'links';
-function dname(id){ return st(id).nickname || (profiles[id] || {}).username || 'Unknown'; }
+function dname(id){ const p = profiles[id] || {}; return st(id).nickname || p.display_name || p.username || 'Unknown'; }
 function askPassword(){
   return new Promise(res => {
     const d = $('pwDlg'); let done = false;
@@ -843,13 +896,218 @@ function renderMedia(){
   });
 }
 
+/* ---------- Stage 4: profile, settings, themes, sounds ---------- */
+const THEMES = {
+  lavender: { n: 'Lavender', hue: 255, v: { bg:'#120d1f', surface:'#1b1430', surface2:'#241a3d', text:'#efeaff', muted:'#a094bd', accent:'#b69cff', accent2:'#e4d9ff', 'accent-text':'#1a0f33', mine:'#a68bff', 'mine-text':'#160f2b', theirs:'#2a2045', border:'#2e2447' } },
+  orange:   { n: 'Orange', hue: 25, v: { bg:'#1c1008', surface:'#2a1a0e', surface2:'#382313', text:'#fff1e6', muted:'#c4a68e', accent:'#ff9a4d', accent2:'#ffd9b8', 'accent-text':'#2b1200', mine:'#ff9a4d', 'mine-text':'#2b1200', theirs:'#3d2815', border:'#4a3220' } },
+  blue:     { n: 'Blue', hue: 215, v: { bg:'#0a1220', surface:'#101c33', surface2:'#16274a', text:'#e8f0ff', muted:'#8fa3c7', accent:'#5b9dff', accent2:'#cfe1ff', 'accent-text':'#07142b', mine:'#5b9dff', 'mine-text':'#07142b', theirs:'#1a2c52', border:'#1f3359' } },
+  green:    { n: 'Dark green', hue: 150, v: { bg:'#08140e', surface:'#0f1f17', surface2:'#16301f', text:'#e6f7ec', muted:'#8fb59d', accent:'#4cc38a', accent2:'#c3efd7', 'accent-text':'#04180d', mine:'#3fb57e', 'mine-text':'#04180d', theirs:'#1b3a28', border:'#1f4030' } }
+};
+let themeHue = 255, prefs = { notif_enabled: true, notif_sound: 'chime', ringtone: 'classic', theme: 'lavender' };
+let photos = {}, photoByName = {}, presCh = null, online = new Set(), sview = 'main';
+const cap = t => t[0].toUpperCase() + t.slice(1);
+const SETTITLES = { main: 'Settings', profile: 'Edit profile', locks: 'Locked chats', privacy: 'Privacy', blocked: 'Blocked contacts', notif: 'Notifications', theme: 'Theme' };
+const TONES = { chime: [[880,.12],[1320,.2]], pop: [[600,.08]], bell: [[1046,.15],[784,.3]], drop: [[900,.1],[500,.18]], none: [] };
+const RINGS = { classic: [[740,.25],[0,.1],[740,.25],[0,.4]], marimba: [[523,.15],[659,.15],[784,.15],[659,.15]], pulse: [[440,.2],[0,.1],[440,.2],[0,.1],[440,.2]] };
+
+function el(tag, props, ...kids){
+  const e = document.createElement(tag); Object.assign(e, props || {});
+  kids.flat().filter(k => k != null && k !== false).forEach(k => e.append(k)); return e;
+}
+function applyTheme(k){
+  const t = THEMES[k] || THEMES.lavender, r = document.documentElement.style;
+  Object.entries(t.v).forEach(([a, b]) => r.setProperty('--' + a, b));
+  themeHue = t.hue; localStorage.setItem('absol-theme', k in THEMES ? k : 'lavender');
+  document.querySelector('meta[name=theme-color]').content = t.v.bg;
+}
+function playSeq(seq){
+  if (!seq || !seq.length) return;
+  const ac = window.__ac || (window.__ac = new (window.AudioContext || window.webkitAudioContext)());
+  if (ac.state === 'suspended') ac.resume();
+  let t = ac.currentTime;
+  seq.forEach(([f, d]) => {
+    if (f){
+      const o = ac.createOscillator(), g = ac.createGain(); o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.2, t + .02); g.gain.exponentialRampToValueAtTime(.0001, t + d);
+      o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + d + .03);
+    }
+    t += d;
+  });
+}
+async function loadPrefs(){
+  const { data } = await sb.from('user_prefs').select('*').eq('user_id', me.id).maybeSingle();
+  if (data) prefs = { ...prefs, ...data };
+  applyTheme(prefs.theme);
+}
+async function savePrefs(patch){
+  Object.assign(prefs, patch);
+  const { error } = await sb.from('user_prefs').upsert({ ...prefs, user_id: me.id });
+  if (error) toast('Could not save: ' + friendly(error));
+}
+async function loadPhotos(ids){
+  ids = [...new Set(ids)].filter(Boolean); if (!ids.length) return;
+  ids.forEach(id => { delete photos[id]; const u = (profiles[id] || {}).username; if (u) delete photoByName[u]; });
+  const { data } = await sb.from('profile_photos').select('*').in('user_id', ids);
+  (data || []).forEach(r => {
+    if (!/^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(r.photo)) return;
+    photos[r.user_id] = r.photo; const u = (profiles[r.user_id] || {}).username; if (u) photoByName[u] = r.photo;
+  });
+}
+function startPresence(){
+  if (presCh) sb.removeChannel(presCh);
+  presCh = sb.channel('presence-online', { config: { presence: { key: me.id } } });
+  presCh.on('presence', { event: 'sync' }, () => { online = new Set(Object.keys(presCh.presenceState())); if (current) chatChrome(); });
+  presCh.subscribe(async st2 => { if (st2 === 'SUBSCRIBED' && me.showOnline) await presCh.track({ t: Date.now() }); });
+}
+function notifyIncoming(m){
+  if (m.recipient_id !== me.id || !prefs.notif_enabled) return;
+  const id = m.sender_id, f = st(id);
+  if (f.muted || f.blocked || (current === id && !document.hidden)) return;
+  playSeq(TONES[f.notif_sound || prefs.notif_sound]);
+  toast('New message from ' + (f.locked ? 'a locked chat' : dname(id)));
+  if (document.hidden && window.Notification && Notification.permission === 'granted'){ try { new Notification('Absol', { body: 'New message' }); } catch {} }
+}
+async function saveProfile(patch){
+  const { error } = await sb.from('profiles').update(patch).eq('id', me.id);
+  if (error){ toast('Could not save: ' + friendly(error)); return false; }
+  Object.assign(profiles[me.id], patch); return true;
+}
+function fillProfile(){
+  const p = profiles[me.id] || {};
+  $('profAv').replaceChildren(avatar(me.username, 'big'));
+  $('profName').textContent = p.display_name || me.username;
+  $('profUser').textContent = '@' + me.username;
+  $('profBio').textContent = p.bio || 'No bio yet';
+  $('profEmail').textContent = p.contact_email || 'Not added';
+  $('profPhone').textContent = p.phone || 'Not added';
+}
+async function setPhoto(file){
+  try {
+    const bmp = await createImageBitmap(file), S = 192, c = document.createElement('canvas'); c.width = c.height = S;
+    const m = Math.min(bmp.width, bmp.height);
+    c.getContext('2d').drawImage(bmp, (bmp.width - m) / 2, (bmp.height - m) / 2, m, m, 0, 0, S, S);
+    const url = c.toDataURL('image/jpeg', .8);
+    const { error } = await sb.from('profile_photos').upsert({ user_id: me.id, photo: url });
+    if (error) throw error;
+    photos[me.id] = url; photoByName[me.username] = url; afterPhoto();
+  } catch { toast('Could not use that photo'); }
+}
+async function removePhoto(){
+  const { error } = await sb.from('profile_photos').delete().eq('user_id', me.id);
+  if (error) return toast('Could not remove photo');
+  delete photos[me.id]; delete photoByName[me.username]; afterPhoto();
+}
+function afterPhoto(){ $('avatarBtn').replaceChildren(avatar(me.username)); rerender(); renderList(); }
+
+function srow(label, right, onclick){
+  const d = el('div', { className: 'srow' + (onclick ? ' tap' : '') }, el('span', { textContent: label }), right || '');
+  if (onclick) d.onclick = onclick; return d;
+}
+const scard = (...rows) => el('div', { className: 'scard' }, ...rows);
+const pill = (on, cb, red) => el('label', { className: 'pill' + (red ? ' red' : '') }, el('input', { type: 'checkbox', checked: on, onchange: e => cb(e.target.checked) }), el('i'));
+const chipBtn = (t, fn) => el('button', { className: 'chip', textContent: t, onclick: fn });
+const empty = t => el('div', { className: 'empty', textContent: t });
+const field = (l, inp) => el('div', {}, el('div', { className: 'dlabel', textContent: l }), inp);
+const chatIds = () => [...new Set(msgs.filter(visible).map(otherId))];
+function fillSel(sel, obj, val){
+  sel.textContent = '';
+  sel.append(el('option', { value: '', textContent: 'Default' }), ...Object.keys(obj).map(k => el('option', { value: k, textContent: cap(k) })));
+  sel.value = val || '';
+}
+function openChatNotif(id){
+  const f = st(id); $('cnTitle').textContent = dname(id); $('cnMute').checked = !!f.muted;
+  fillSel($('cnSound'), TONES, f.notif_sound); fillSel($('cnRing'), RINGS, f.ringtone);
+  $('cnSave').onclick = async () => {
+    if (await setSetting(id, { muted: $('cnMute').checked, notif_sound: $('cnSound').value || null, ringtone: $('cnRing').value || null })){ $('cnDlg').close(); rerender(); }
+  };
+  $('cnDlg').showModal();
+}
+
+const VIEWS = {
+  main(b){
+    b.append(scard(...[['👤 Profile','profile'],['🔒 Locked chats','locks'],['🛡 Privacy','privacy'],['🚫 Blocked contacts','blocked'],['🔔 Notifications','notif'],['🎨 Theme','theme']]
+      .map(([t, v]) => srow(t, '›', () => gotoView(v)))));
+  },
+  profile(b){
+    const p = profiles[me.id] || {};
+    const file = el('input', { type: 'file', accept: 'image/*', hidden: true, onchange: async e => { const f = e.target.files[0]; if (f) await setPhoto(f); } });
+    const dn = el('input', { value: p.display_name || '', maxLength: 30, placeholder: 'Display name' });
+    const bio = el('textarea', { value: p.bio || '', maxLength: 150, rows: 3, placeholder: 'Write a short bio' });
+    const em = el('input', { value: p.contact_email || '', type: 'email', placeholder: 'Email' });
+    const ph = el('input', { value: p.phone || '', type: 'tel', placeholder: 'Phone number' });
+    b.append(
+      el('div', { className: 'ctr' }, avatar(me.username, 'big')),
+      el('div', { className: 'row' }, el('button', { textContent: 'Change photo', onclick: () => file.click() }), el('button', { className: 'ghost', textContent: 'Remove', onclick: removePhoto })), file,
+      field('Username (cannot be changed)', el('input', { value: '@' + me.username, disabled: true })),
+      field('Display name', dn), field('Bio', bio), field('Email', em), field('Number', ph),
+      el('button', { className: 'wide', textContent: 'Save changes', onclick: async () => {
+        const e = em.value.trim(), t = ph.value.trim();
+        if (e && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) return toast('Enter a valid email');
+        if (t && !/^\+?[0-9 ()-]{6,20}$/.test(t)) return toast('Enter a valid phone number');
+        if (await saveProfile({ display_name: dn.value.trim() || null, bio: bio.value.trim() || null, contact_email: e || null, phone: t || null })) toast('Profile saved');
+      } }),
+      el('p', { className: 'hint', textContent: 'Email and number are not verified yet.' }));
+  },
+  locks(b){
+    const locked = Object.keys(settings).filter(id => settings[id].locked);
+    const cand = chatIds().filter(id => !st(id).locked);
+    const flip = (id, v) => async () => { if (await setSetting(id, { locked: v })){ renderList(); rerender(); } };
+    b.append(el('div', { className: 'sec', textContent: 'Locked chats' }),
+      locked.length ? scard(...locked.map(id => srow(dname(id), chipBtn('Remove', flip(id, false))))) : empty('No locked chats'),
+      el('div', { className: 'sec', textContent: 'Add a chat' }),
+      cand.length ? scard(...cand.map(id => srow(dname(id), chipBtn('Lock', flip(id, true))))) : empty('No other chats to lock'));
+  },
+  privacy(b){
+    const p = profiles[me.id] || {};
+    b.append(scard(
+      srow('Show online status', pill(me.showOnline !== false, async v => {
+        if (!(await saveProfile({ show_online: v }))) return rerender();
+        me.showOnline = v; if (presCh){ if (v) presCh.track({ t: Date.now() }); else presCh.untrack(); }
+      })),
+      srow('Hide my photo from unsaved contacts', pill(!!p.hide_photo_unsaved, async v => { if (!(await saveProfile({ hide_photo_unsaved: v }))) rerender(); }))),
+      el('p', { className: 'hint', textContent: 'If you turn off online status, you also will not see when others are online. A saved contact is someone you have sent a message to. With the photo option on, everyone else sees only your initial.' }));
+  },
+  blocked(b){
+    const ids = Object.keys(settings).filter(id => settings[id].blocked);
+    b.append(ids.length ? scard(...ids.map(id => srow(dname(id), chipBtn('Unblock', async () => { if (await setSetting(id, { blocked: false })) rerender(); })))) : empty('No blocked contacts'));
+  },
+  notif(b){
+    const snd = el('select', { onchange: e => savePrefs({ notif_sound: e.target.value }) }, ...Object.keys(TONES).map(k => el('option', { value: k, textContent: cap(k) })));
+    const rng = el('select', { onchange: e => savePrefs({ ringtone: e.target.value }) }, ...Object.keys(RINGS).map(k => el('option', { value: k, textContent: cap(k) })));
+    snd.value = prefs.notif_sound; rng.value = prefs.ringtone;
+    const ids = chatIds();
+    b.append(scard(
+      srow('Enable notifications', pill(prefs.notif_enabled, async v => { await savePrefs({ notif_enabled: v }); if (v && window.Notification && Notification.permission === 'default') Notification.requestPermission(); })),
+      srow('Message sound', el('div', { className: 'pr' }, snd, chipBtn('▶', () => playSeq(TONES[snd.value])))),
+      srow('Call ringtone', el('div', { className: 'pr' }, rng, chipBtn('▶', () => playSeq(RINGS[rng.value]))))),
+      el('div', { className: 'sec', textContent: 'Chat-specific' }),
+      ids.length ? scard(...ids.map(id => { const f = st(id);
+        return srow(dname(id), el('span', { className: 'r', textContent: f.muted ? '🔕 Muted' : (f.notif_sound || f.ringtone) ? 'Custom' : 'Default' }), () => openChatNotif(id)); })) : empty('No chats yet'),
+      el('p', { className: 'hint', textContent: 'Sounds play inside Absol. Your phone’s own notification sound cannot be changed from a web app.' }));
+  },
+  theme(b){
+    b.append(scard(...Object.entries(THEMES).map(([k, t]) => srow(t.n,
+      el('span', {}, el('span', { className: 'swatch', style: 'background:' + t.v.accent }), el('span', { className: 'swatch', style: 'background:' + t.v.accent2 }), prefs.theme === k ? ' ✓' : ''),
+      () => { applyTheme(k); savePrefs({ theme: k }); rerender(); }))));
+  }
+};
+function rerender(){ $('sbody').textContent = ''; VIEWS[sview]($('sbody')); }
+async function gotoView(v){
+  if (v === 'locks' && sview !== 'locks' && !(await askPassword())) return;
+  await loadProfiles(Object.keys(settings));
+  sview = v; $('setTitle').textContent = SETTITLES[v]; rerender(); show('settings');
+}
+
 /* ---------- Wire up ---------- */
 $('backupBtn').onclick = openBackupDlg;
 $('searchBtn').onclick = openSearch;
 $('searchBack').onclick = () => show('list');
 $('searchInput').addEventListener('input', renderSearch);
-$('avatarBtn').onclick = () => { $('profName').textContent = me.username; $('profAv').replaceChildren(avatar(me.username, 'big')); show('profile'); };
+$('avatarBtn').onclick = () => { fillProfile(); show('profile'); };
 $('profBack').onclick = () => show('list');
+$('settingsBtn').onclick = () => { sview = 'main'; gotoView('main'); };
+$('setBack').onclick = () => { if (sview === 'main'){ fillProfile(); show('profile'); } else gotoView('main'); };
+$('cnCancel').onclick = () => $('cnDlg').close();
 $('bannerBtn').onclick = openBackupDlg;
 $('bkGo').onclick = createBackup;
 $('bkCancel').onclick = () => $('bkDlg').close();
@@ -929,6 +1187,7 @@ $('verClose').onclick = () => $('verDlg').close();
 $('sendBtn').onclick = send;
 $('msgInput').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
 
+applyTheme(localStorage.getItem('absol-theme') || 'lavender');
 start().catch(e => { console.error(e); show('auth'); $('err').textContent = friendly(e); });
 </script>
 </body>
