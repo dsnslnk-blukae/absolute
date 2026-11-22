@@ -141,6 +141,20 @@ textarea{resize:none}
 .card{border-color:var(--border)}
 .convo{border-bottom-color:var(--border)}
 .banner{background:var(--surface2)}
+.gm{display:flex;gap:8px;align-items:flex-end;align-self:flex-start;max-width:90%}
+.gcol{display:flex;flex-direction:column;gap:2px;min-width:0}
+.gcol .b{max-width:100%}
+.gname{font-size:12px;color:var(--accent);margin-left:6px;cursor:pointer}
+.av.sm{width:30px;height:30px;font-size:13px;cursor:pointer}
+.av.grp{border-radius:32%}
+.tag{font-size:11px;background:var(--accent);color:var(--accent-text);border-radius:10px;padding:2px 8px}
+.mr{display:flex;gap:12px;align-items:center;min-width:0}
+.mr .tx{min-width:0}
+.mr .tx span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px}
+.plist{max-height:38vh;overflow-y:auto;margin:10px 0}
+.plist input{width:auto}
+.pk{display:flex;gap:10px;align-items:center;justify-content:flex-start}
+#pickAdd{flex:none}
 </style>
 </head>
 <body>
@@ -221,6 +235,11 @@ textarea{resize:none}
     </div>
   </section>
 
+  <section id="ginfo" hidden>
+    <div class="top"><button class="iconbtn" id="giBack">←</button><h1 class="brand" style="font-size:20px">Group info</h1></div>
+    <div class="sbody" id="gibody"></div>
+  </section>
+
   <section id="chat" hidden>
     <div class="chead">
       <button class="iconbtn" id="backBtn" aria-label="Back">←</button>
@@ -238,6 +257,7 @@ textarea{resize:none}
   <h2>Start a chat</h2>
   <input id="newUser" placeholder="Their username" autocapitalize="off">
   <div class="row" style="margin-top:8px"><button id="newGo">Chat by username</button></div>
+  <div class="row" style="margin-top:8px"><button class="ghost" id="newGroup" style="border:1px solid var(--accent)">👥 Create a group</button></div>
   <hr>
   <div class="row"><button id="roomCreate">Create a room code</button></div>
   <input id="roomCode" inputmode="numeric" maxlength="5" placeholder="Or enter a 5-digit room code" style="margin-top:12px">
@@ -296,6 +316,15 @@ textarea{resize:none}
   <div class="row" style="margin-top:8px"><button class="ghost" id="rsFresh">Start fresh</button><button class="ghost" id="rsCancel">Cancel</button></div>
 </dialog>
 
+<dialog id="pickDlg">
+  <h2 id="pickTitle"></h2>
+  <input id="pickName" placeholder="Group name" maxlength="40" hidden>
+  <div class="plist" id="pickList"></div>
+  <div class="row"><input id="pickUser" placeholder="Add someone by username" autocapitalize="off"><button class="chip" id="pickAdd">Add</button></div>
+  <div id="pickMsg" class="hint" style="color:var(--danger);margin-top:8px"></div>
+  <div class="row" style="margin-top:8px"><button class="ghost" id="pickCancel">Cancel</button><button id="pickGo">Create</button></div>
+</dialog>
+
 <dialog id="cnDlg">
   <h2 id="cnTitle"></h2>
   <div class="srow" style="padding:8px 0;border:0"><span>🔕 Mute this chat</span><label class="pill"><input type="checkbox" id="cnMute"><i></i></label></div>
@@ -323,11 +352,14 @@ textarea{resize:none}
   <button data-a="call">📞 Call</button>
   <button data-a="search">🔍 Search in chat</button>
   <button data-a="fav" id="mFav">⭐ Add to favorites</button>
+  <button data-a="info">ℹ️ Group info</button>
+  <button data-a="mute" id="mMute">🔕 Mute</button>
   <button data-a="verify">🔑 Verify encryption</button>
   <button data-a="clear">🧹 Clear chat</button>
   <button data-a="delete">🗑 Delete chat</button>
   <button data-a="block" id="mBlock" class="danger">🚫 Block user</button>
   <button data-a="report" class="danger">⚑ Report user</button>
+  <button data-a="leave" class="danger">🚪 Leave group</button>
 </div></div>
 
 <dialog id="repDlg">
@@ -355,7 +387,7 @@ let me = null, profiles = {}, msgs = [], current = null, channel = null;
 const b64 = u => nacl.util.encodeBase64(u);
 const unb64 = s => nacl.util.decodeBase64(s);
 
-function show(name){ for (const s of ['auth','list','chat','search','profile','details','settings']) $(s).hidden = s !== name; if (name === 'list' && window.layoutHome) layoutHome(); }
+function show(name){ for (const s of ['auth','list','chat','search','profile','details','settings','ginfo']) $(s).hidden = s !== name; if (name === 'list' && window.layoutHome) layoutHome(); }
 function toast(t){ const el = $('toast'); el.textContent = t; el.classList.add('on'); setTimeout(() => el.classList.remove('on'), 2500); }
 function friendly(e){
   const m = (e && e.message) || String(e);
@@ -431,6 +463,7 @@ async function start(){
   await loadPrefs();
   await loadPhotos([uid]);
   await loadProfiles(rows.flatMap(r => [r.sender_id, r.recipient_id]));
+  await loadGroups(true);
   subscribe();
   startPresence();
   renderList();
@@ -440,6 +473,7 @@ async function start(){
 async function logout(){
   if (presCh){ sb.removeChannel(presCh); presCh = null; }
   sview = 'main';
+  groups = {}; gmembers = {}; gmsgs = []; gkeys = {}; gset = {}; curGroup = null;
   if (channel) { sb.removeChannel(channel); channel = null; }
   await sb.auth.signOut();
   me = null; msgs = []; profiles = {}; current = null;
@@ -489,6 +523,9 @@ function subscribe(){
       msgs = msgs.filter(m => m.id !== id);
       if (msgs.length !== n){ renderList(); if (current) renderMsgs(); }
     })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_messages' }, p => onGroupMsg(p.new))
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'group_members' }, () => refreshGroups())
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'groups' }, () => refreshGroups())
     .subscribe();
 }
 
@@ -502,25 +539,39 @@ function fmtTime(iso){
 
 function renderList(){
   const box = $('convos'); box.textContent = '';
-  const last = {};
+  const last = {}, items = [];
   msgs.filter(visible).forEach(m => last[otherId(m)] = m);
-  const ids = Object.keys(last).sort((a, b) => (st(b).favorite ? 1 : 0) - (st(a).favorite ? 1 : 0) || new Date(last[b].created_at) - new Date(last[a].created_at));
-  if (!ids.length){
+  Object.keys(last).forEach(id => items.push({ kind: 'u', id, m: last[id], t: +new Date(last[id].created_at), fav: st(id).favorite ? 1 : 0 }));
+  Object.keys(groups).forEach(id => { const gm = lastGroupMsg(id); items.push({ kind: 'g', id, m: gm, t: +new Date(gm ? gm.created_at : groups[id].created_at), fav: (gset[id] || {}).favorite ? 1 : 0 }); });
+  items.sort((a, b) => (b.fav - a.fav) || (b.t - a.t));
+  if (!items.length){
     const e = document.createElement('div'); e.className = 'empty';
-    e.textContent = 'No chats yet. Tap “+ New” and enter a username to start.';
+    e.textContent = 'No chats yet. Tap “+” to chat with someone or create a group.';
     box.appendChild(e); return;
   }
-  ids.forEach(id => {
-    const m = last[id], d = document.createElement('div'); d.className = 'convo';
-    const n = document.createElement('b'); n.textContent = dname(id);
-    const s = document.createElement('span'); s.textContent = st(id).locked ? '🔒 Locked chat' : (m.sender_id === me.id ? 'You: ' : '') + (decrypt(m) ?? '🔒 Can’t decrypt') + ' · ' + fmtTime(m.created_at);
-    const tx = document.createElement('div'); tx.className = 'tx'; tx.append(n, s);
-    d.append(avatar((profiles[id] || {}).username), tx); if (st(id).favorite) n.textContent += ' ⭐';
-    d.onclick = () => openChat(id); box.appendChild(d);
+  items.forEach(it => {
+    const d = document.createElement('div'); d.className = 'convo';
+    const n = document.createElement('b'), s = document.createElement('span'), tx = document.createElement('div'); tx.className = 'tx';
+    if (it.kind === 'u'){
+      const id = it.id, m = it.m;
+      n.textContent = dname(id);
+      s.textContent = st(id).locked ? '🔒 Locked chat' : (m.sender_id === me.id ? 'You: ' : '') + (decrypt(m) ?? '🔒 Can’t decrypt') + ' · ' + fmtTime(m.created_at);
+      tx.append(n, s); d.append(avatar((profiles[id] || {}).username), tx);
+      if (st(id).favorite) n.textContent += ' ⭐';
+      d.onclick = () => openChat(id);
+    } else {
+      const g = groups[it.id], gs = gset[g.id] || {}, m = it.m;
+      n.textContent = g.name + (gs.favorite ? ' ⭐' : '') + (gs.muted ? ' 🔕' : '');
+      s.textContent = m ? (m.sender_id === me.id ? 'You' : dname(m.sender_id)) + ': ' + (decryptG(m) ?? '🔒 Can’t decrypt') + ' · ' + fmtTime(m.created_at) : 'Group created';
+      tx.append(n, s); d.append(avatar(g.name, 'grp'), tx);
+      d.onclick = () => openGroup(g.id);
+    }
+    box.appendChild(d);
   });
 }
 
 function renderMsgs(){
+  if (curGroup) return renderGroupMsgs();
   const box = $('msgs'); box.textContent = '';
   const list = msgs.filter(m => visible(m) && otherId(m) === current)
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
@@ -546,7 +597,7 @@ function renderMsgs(){
 
 async function openChat(id){
   if (st(id).locked && !(await askPassword())) return;
-  current = id;
+  current = id; curGroup = null;
   closeCS(); chatChrome();
   renderMsgs(); show('chat');
   await loadProfiles([id], true); // pick up any key change
@@ -556,6 +607,7 @@ async function openChat(id){
 
 /* ---------- Actions ---------- */
 async function send(){
+  if (curGroup) return sendGroup();
   const t = $('msgInput').value.trim();
   if (!t || !current || st(current).blocked) return;
   $('msgInput').value = '';
@@ -649,7 +701,7 @@ async function clearChat(id){
   return true;
 }
 
-function goList(){ current = null; roomPeer = null; renderList(); show('list'); }
+function goList(){ current = null; curGroup = null; roomPeer = null; renderList(); show('list'); }
 
 /* ---------- Key backup & restore ---------- */
 async function deriveKey(pass, salt, iter){
@@ -738,7 +790,7 @@ function avatar(name, cls){
   const n = name || '?'; d.textContent = n[0].toUpperCase();
   let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 360;
   d.style.background = `hsl(${themeHue + (h % 50)} 62% 76%)`;
-  const ph = photoByName[n];
+  const ph = (cls || '').includes('grp') ? null : photoByName[n];
   if (ph){ d.textContent = ''; d.style.backgroundImage = `url("${ph}")`; d.style.backgroundSize = 'cover'; d.style.backgroundPosition = 'center'; }
   return d;
 }
@@ -760,6 +812,12 @@ function renderSearch(){
   if (q){
     const hits = msgs.filter(m => visible(m) && !st(otherId(m)).locked && (decrypt(m) || '').toLowerCase().includes(q)).slice(-30).reverse();
     if (hits.length){ sec('Messages'); hits.forEach(m => box.appendChild(rowEl(otherId(m), decrypt(m)))); }
+  }
+  if (q){
+    const gh = Object.values(groups).filter(g => g.name.toLowerCase().includes(q));
+    if (gh.length){ sec('Groups'); gh.forEach(g => box.appendChild(gRowEl(g.id, 'Group'))); }
+    const gm = gmsgs.filter(m => gvisible(m) && (decryptG(m) || '').toLowerCase().includes(q)).slice(-30).reverse();
+    if (gm.length){ sec('Group messages'); gm.forEach(m => box.appendChild(gRowEl(m.group_id, dname(m.sender_id) + ': ' + decryptG(m)))); }
   }
   if (!box.children.length){ const e = document.createElement('div'); e.className = 'empty'; e.textContent = q ? 'No matches found' : 'No contacts yet'; box.appendChild(e); }
 }
@@ -1105,6 +1163,260 @@ async function gotoView(v){
   sview = v; $('setTitle').textContent = SETTITLES[v]; rerender(); show('settings');
 }
 
+/* ---------- Stage 5: group chats ---------- */
+let groups = {}, gmembers = {}, gmsgs = [], gkeys = {}, gset = {}, curGroup = null, detReturn = null, rotating = false, gTimer = null;
+const isAdminOf = (gid, uid) => (gmembers[gid] || []).some(m => m.user_id === (uid || me.id) && m.is_admin);
+function gvisible(m){ const c = (gset[m.group_id] || {}).cleared_before; return !c || new Date(m.created_at) > new Date(c); }
+function lastGroupMsg(id){
+  let best = null;
+  gmsgs.forEach(m => { if (m.group_id === id && gvisible(m) && (!best || new Date(m.created_at) > new Date(best.created_at))) best = m; });
+  return best;
+}
+function decryptG(m){
+  if (m._t != null) return m._t;
+  try {
+    const K = gkeys[m.group_id + ':' + m.epoch]; if (!K) return null;
+    const pt = nacl.secretbox.open(unb64(m.ciphertext), unb64(m.nonce), K);
+    return pt ? (m._t = nacl.util.encodeUTF8(pt)) : null;
+  } catch { return null; }
+}
+async function loadGroups(withMsgs){
+  const { data: gs } = await sb.from('groups').select('*');
+  groups = {}; (gs || []).forEach(g => groups[g.id] = g);
+  if (!Object.keys(groups).length){ gmembers = {}; gset = {}; if (withMsgs) gmsgs = []; return; }
+  const [{ data: ms }, { data: ks }, { data: ss }] = await Promise.all([
+    sb.from('group_members').select('*'), sb.from('group_keys').select('*'), sb.from('group_settings').select('*')]);
+  gmembers = {}; (ms || []).forEach(m => (gmembers[m.group_id] = gmembers[m.group_id] || []).push(m));
+  gset = {}; (ss || []).forEach(r => gset[r.group_id] = r);
+  await loadProfiles([...(ms || []).map(m => m.user_id), ...(ks || []).map(k => k.wrapped_by)]);
+  (ks || []).forEach(k => {
+    const key = k.group_id + ':' + k.epoch, wp = profiles[k.wrapped_by];
+    if (gkeys[key] || !wp) return;
+    const K = nacl.box.open(unb64(k.wrapped_key), unb64(k.nonce), unb64(wp.public_key), me.sk);
+    if (K) gkeys[key] = K;
+  });
+  if (withMsgs){
+    const { data } = await sb.from('group_messages').select('*').order('created_at', { ascending: true }).limit(3000);
+    gmsgs = data || [];
+  } else gmsgs = gmsgs.filter(m => groups[m.group_id]);
+  autoRotate();
+}
+function refreshGroups(){
+  clearTimeout(gTimer);
+  gTimer = setTimeout(async () => {
+    await loadGroups(true);
+    if (curGroup && !groups[curGroup]){ toast('You are no longer in this group'); goList(); return; }
+    renderList();
+    if (curGroup){ if (!$('ginfo').hidden) openGroupInfo(curGroup); else { groupChrome(); renderMsgs(); } }
+  }, 400);
+}
+async function autoRotate(){
+  if (rotating) return;
+  for (const g of Object.values(groups)){
+    if (!g.needs_rotate || !isAdminOf(g.id)) continue;
+    rotating = true; try { await changeMembers(g.id, [], []); } finally { rotating = false; }
+  }
+}
+async function wrapKeys(ids){
+  await loadProfiles(ids, true);
+  const K = nacl.randomBytes(32);
+  return ids.map(uid => {
+    const nonce = nacl.randomBytes(nacl.box.nonceLength);
+    return { user_id: uid, wrapped_key: b64(nacl.box(K, nonce, unb64(profiles[uid].public_key), me.sk)), nonce: b64(nonce) };
+  });
+}
+async function changeMembers(gid, add, remove){
+  const cur = (gmembers[gid] || []).map(m => m.user_id).filter(id => !remove.includes(id));
+  const final = [...new Set([...cur, ...add])];
+  if (final.length > 50){ toast('A group can have at most 50 members'); return false; }
+  const keys = await wrapKeys(final);
+  const { error } = await sb.rpc('group_change_members', { p_group: gid, p_add: add, p_remove: remove, p_keys: keys });
+  if (error){ toast(friendly(error)); return false; }
+  await loadGroups(true); return true;
+}
+async function setGSetting(gid, patch){
+  const { error } = await sb.from('group_settings').upsert({ user_id: me.id, group_id: gid, ...patch }, { onConflict: 'user_id,group_id' });
+  if (error){ toast('Could not save: ' + friendly(error)); return false; }
+  gset[gid] = { ...(gset[gid] || {}), group_id: gid, ...patch }; return true;
+}
+
+function pickMembers(title, exclude, withName, label){
+  return new Promise(resolve => {
+    const dlg = $('pickDlg'), list = $('pickList'), rows = {}; let done = false;
+    const fin = v => { if (done) return; done = true; if (dlg.open) dlg.close(); resolve(v); };
+    $('pickTitle').textContent = title; $('pickName').hidden = !withName; $('pickName').value = '';
+    $('pickMsg').textContent = ''; $('pickGo').textContent = label; $('pickUser').value = ''; list.textContent = '';
+    const addRow = (id, checked) => {
+      if (rows[id]){ rows[id].checked = true; return; }
+      const cb = el('input', { type: 'checkbox', checked }); rows[id] = cb;
+      list.appendChild(el('label', { className: 'srow tap pk' }, cb, avatar((profiles[id] || {}).username, 'sm'), el('span', { textContent: dname(id) })));
+    };
+    chatIds().filter(id => !exclude.has(id)).forEach(id => addRow(id, false));
+    $('pickAdd').onclick = async () => {
+      const u = $('pickUser').value.trim().toLowerCase(); if (!u) return;
+      const { data } = await sb.from('profiles').select('*').eq('username', u).maybeSingle();
+      if (!data) return $('pickMsg').textContent = 'User not found';
+      if (exclude.has(data.id) || data.id === me.id) return $('pickMsg').textContent = 'That person is already in the group';
+      profiles[data.id] = data; addRow(data.id, true); $('pickUser').value = ''; $('pickMsg').textContent = '';
+    };
+    $('pickGo').onclick = () => {
+      const ids = Object.keys(rows).filter(id => rows[id].checked), name = $('pickName').value.trim();
+      if (withName && !name) return $('pickMsg').textContent = 'Enter a group name';
+      if (!ids.length) return $('pickMsg').textContent = 'Pick at least one person';
+      fin({ name, ids });
+    };
+    $('pickCancel').onclick = () => fin(null);
+    dlg.addEventListener('cancel', () => fin(null), { once: true });
+    dlg.showModal();
+  });
+}
+async function newGroupFlow(){
+  $('newDlg').close();
+  const r = await pickMembers('New group', new Set(), true, 'Create'); if (!r) return;
+  if (r.ids.length + 1 > 50) return toast('A group can have at most 50 members');
+  const keys = await wrapKeys([me.id, ...r.ids]);
+  const { data, error } = await sb.rpc('create_group', { p_name: r.name, p_members: r.ids, p_keys: keys });
+  if (error) return toast(friendly(error));
+  await loadGroups(true); renderList(); openGroup(data);
+}
+
+function gRowEl(gid, sub){
+  const g = groups[gid], d = document.createElement('div'); d.className = 'convo';
+  const tx = document.createElement('div'); tx.className = 'tx';
+  tx.append(el('b', { textContent: g.name }), el('span', { textContent: sub }));
+  d.append(avatar(g.name, 'grp'), tx); d.onclick = () => openGroup(gid); return d;
+}
+function groupChrome(){
+  const g = groups[curGroup]; if (!g) return;
+  const gs = gset[g.id] || {};
+  $('chatTitle').textContent = g.name; $('chatAv').replaceChildren(avatar(g.name, 'grp'));
+  $('chatSub').textContent = `${(gmembers[g.id] || []).length} members` + (gs.muted ? ' · 🔕 Muted' : '');
+  $('composer').hidden = false; $('blockbar').hidden = true;
+  $('mFav').textContent = gs.favorite ? '⭐ Remove from favorites' : '⭐ Add to favorites';
+  $('mMute').textContent = gs.muted ? '🔔 Unmute' : '🔕 Mute';
+}
+function openGroup(gid){
+  if (!groups[gid]) return;
+  curGroup = gid; current = null; closeCS(); groupChrome(); renderMsgs(); show('chat');
+}
+function renderGroupMsgs(){
+  const box = $('msgs'); box.textContent = '';
+  const list = gmsgs.filter(m => m.group_id === curGroup && gvisible(m))
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+    .filter(m => {
+      if (!cs.q && !cs.links) return true;
+      const t = decryptG(m) || '';
+      return (!cs.q || t.toLowerCase().includes(cs.q)) && (!cs.links || /https?:\/\/\S+/i.test(t));
+    });
+  if (!list.length){ box.appendChild(empty((cs.q || cs.links) ? 'No matches in this group' : 'No messages yet. Say hi 👋')); return; }
+  let prev = null;
+  list.forEach(m => {
+    const mine = m.sender_id === me.id, t = decryptG(m);
+    const b = el('div', { className: 'b ' + (mine ? 'me' : 'them') + (t == null ? ' fail' : '') + (m.pending ? ' pending' : '') },
+      el('span', { textContent: t ?? '🔒 Can’t decrypt this message' }), el('small', { textContent: fmtTime(m.created_at) }));
+    if (mine) box.appendChild(b);
+    else {
+      const sid = m.sender_id, open = () => { detReturn = 'chat'; openDetails(sid); };
+      const av = avatar((profiles[sid] || {}).username, 'sm'); av.onclick = open;
+      const col = el('div', { className: 'gcol' }, prev !== sid ? el('div', { className: 'gname', textContent: dname(sid), onclick: open }) : '', b);
+      box.appendChild(el('div', { className: 'gm' }, av, col));
+    }
+    prev = m.sender_id;
+  });
+  box.scrollTop = box.scrollHeight;
+}
+async function sendGroup(){
+  const t = $('msgInput').value.trim(), gid = curGroup;
+  if (!t || !gid || !groups[gid]) return;
+  $('msgInput').value = '';
+  const tmp = { id: 'tmp' + Date.now() + Math.random(), group_id: gid, sender_id: me.id, created_at: new Date().toISOString(), _t: t, pending: true };
+  gmsgs.push(tmp); renderMsgs(); renderList();
+  let ok = false;
+  for (let i = 0; i < 2 && !ok; i++){
+    const g = groups[gid], K = g && gkeys[g.id + ':' + g.epoch];
+    if (!K){ await loadGroups(false); continue; }
+    const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+    const ct = nacl.secretbox(nacl.util.decodeUTF8(t), nonce, K);
+    const { data, error } = await sb.from('group_messages')
+      .insert({ group_id: gid, sender_id: me.id, epoch: g.epoch, ciphertext: b64(ct), nonce: b64(nonce) }).select().single();
+    if (!error){
+      ok = true; gmsgs = gmsgs.filter(x => x !== tmp);
+      const ex = gmsgs.find(x => x.id === data.id); if (ex) ex._t = t; else { data._t = t; gmsgs.push(data); }
+    } else await loadGroups(false);
+  }
+  if (!ok){ gmsgs = gmsgs.filter(x => x !== tmp); $('msgInput').value = t; toast('Message not delivered'); }
+  renderList(); if (curGroup === gid) renderMsgs();
+}
+async function onGroupMsg(m){
+  if (!groups[m.group_id] || !gkeys[m.group_id + ':' + m.epoch]) await loadGroups(false);
+  if (gmsgs.some(x => x.id === m.id)) return;
+  gmsgs.push(m); await loadProfiles([m.sender_id]);
+  renderList(); if (curGroup === m.group_id) renderMsgs();
+  const g = groups[m.group_id];
+  if (!g || m.sender_id === me.id || !prefs.notif_enabled || (gset[g.id] || {}).muted || (curGroup === g.id && !document.hidden)) return;
+  playSeq(TONES[prefs.notif_sound]); toast('New message in ' + g.name);
+}
+
+function menuMode(){
+  const G = new Set(['search', 'fav', 'clear', 'info', 'mute', 'leave']), O = new Set(['info', 'mute', 'leave']);
+  document.querySelectorAll('#menu button').forEach(b => { const a = b.dataset.a; b.hidden = curGroup ? !G.has(a) : O.has(a); });
+}
+async function groupMenu(a){
+  const gid = curGroup, gs = gset[gid] || {};
+  if (a === 'search') openCS();
+  else if (a === 'fav'){ if (await setGSetting(gid, { favorite: !gs.favorite })){ groupChrome(); renderList(); } }
+  else if (a === 'mute'){ if (await setGSetting(gid, { muted: !gs.muted })){ groupChrome(); renderList(); toast(!gs.muted ? 'Group muted' : 'Group unmuted'); } }
+  else if (a === 'info') openGroupInfo(gid);
+  else if (a === 'leave') leaveGroup(gid);
+  else if (a === 'clear'){
+    if (!confirm('Clear this group chat on your device? Other members keep their messages.')) return;
+    let mx = 0; gmsgs.forEach(m => { if (m.group_id === gid && !m.pending) mx = Math.max(mx, +new Date(m.created_at)); });
+    if (mx && await setGSetting(gid, { cleared_before: new Date(mx + 1).toISOString() })){ renderMsgs(); renderList(); }
+  }
+}
+async function leaveGroup(gid){
+  if (!confirm('Leave this group? You will stop receiving its messages.')) return;
+  const { error } = await sb.rpc('leave_group', { p_group: gid });
+  if (error) return toast(friendly(error));
+  delete groups[gid]; gmsgs = gmsgs.filter(m => m.group_id !== gid); goList();
+}
+function memberRow(g, m, adm){
+  const id = m.user_id, p = profiles[id] || {};
+  const acts = adm && id !== me.id ? [
+    chipBtn(m.is_admin ? 'Demote' : 'Make admin', async e => { e.stopPropagation(); const { error } = await sb.rpc('group_set_admin', { p_group: g.id, p_user: id, p_admin: !m.is_admin }); if (error) return toast(friendly(error)); await loadGroups(false); openGroupInfo(g.id); }),
+    chipBtn('Remove', async e => { e.stopPropagation(); if (confirm(`Remove ${dname(id)} from the group?`) && await changeMembers(g.id, [], [id])) openGroupInfo(g.id); })] : [];
+  const row = el('div', { className: 'srow tap' },
+    el('div', { className: 'mr' }, avatar(p.username), el('div', { className: 'tx' }, el('b', { textContent: id === me.id ? 'You' : dname(id) }), el('span', { className: 'r', textContent: p.bio || '@' + (p.username || '') }))),
+    el('div', { className: 'pr' }, m.is_admin ? el('span', { className: 'tag', textContent: 'Admin' }) : '', ...acts));
+  if (id !== me.id) row.onclick = () => { detReturn = 'ginfo'; openDetails(id); };
+  return row;
+}
+function openGroupInfo(gid){
+  const g = groups[gid]; if (!g) return goList();
+  const adm = isAdminOf(gid), mem = (gmembers[gid] || []).slice().sort((a, b) => (b.is_admin ? 1 : 0) - (a.is_admin ? 1 : 0) || new Date(a.joined_at) - new Date(b.joined_at));
+  const b = $('gibody'); b.textContent = '';
+  b.append(
+    el('div', { className: 'ctr' }, avatar(g.name, 'big grp')),
+    el('h2', { className: 'ctr', textContent: g.name, style: 'margin:0' }),
+    el('div', { className: 'hint ctr', textContent: `${mem.length} of 50 members`, style: 'margin:0' }),
+    el('div', { className: 'scard pad' }, el('div', { className: 'dlabel', textContent: 'Description' }), el('div', { textContent: g.description || 'No description' })),
+    adm ? el('button', { className: 'wide', textContent: '✏️ Edit name and description', onclick: async () => {
+      const name = prompt('Group name', g.name); if (name === null) return;
+      const desc = prompt('Description (optional)', g.description || ''); if (desc === null) return;
+      if (!name.trim()) return toast('Name cannot be empty');
+      const { error } = await sb.from('groups').update({ name: name.trim().slice(0, 40), description: desc.trim() || null }).eq('id', gid);
+      if (error) return toast(friendly(error)); await loadGroups(false); openGroupInfo(gid);
+    } }) : '',
+    el('div', { className: 'sec', textContent: 'Members' }),
+    scard(...mem.map(m => memberRow(g, m, adm))),
+    adm && mem.length < 50 ? el('button', { className: 'wide', textContent: '＋ Add members', onclick: async () => {
+      const r = await pickMembers('Add members', new Set(mem.map(x => x.user_id)), false, 'Add'); if (!r) return;
+      if (await changeMembers(gid, r.ids, [])){ toast('Members added'); openGroupInfo(gid); }
+    } }) : '',
+    el('button', { className: 'ghost wide', style: 'color:var(--danger);border:1px solid var(--border)', textContent: 'Leave group', onclick: () => leaveGroup(gid) }));
+  show('ginfo');
+}
+
 /* ---------- Wire up ---------- */
 $('backupBtn').onclick = openBackupDlg;
 $('searchBtn').onclick = openSearch;
@@ -1112,6 +1424,8 @@ $('searchBack').onclick = () => show('list');
 $('searchInput').addEventListener('input', renderSearch);
 $('avatarBtn').onclick = () => { fillProfile(); show('profile'); };
 $('profBack').onclick = () => show('list');
+$('newGroup').onclick = newGroupFlow;
+$('giBack').onclick = () => { groupChrome(); renderMsgs(); show('chat'); };
 $('settingsBtn').onclick = () => { sview = 'main'; gotoView('main'); };
 $('setBack').onclick = () => { if (sview === 'main'){ fillProfile(); show('profile'); } else gotoView('main'); };
 $('cnCancel').onclick = () => $('cnDlg').close();
@@ -1138,12 +1452,13 @@ $('backBtn').onclick = () => {
 };
 $('leaveKeep').onclick = () => { $('leaveDlg').close(); goList(); };
 $('leaveClear').onclick = async () => { const id = current; if (await clearChat(id)){ $('leaveDlg').close(); goList(); } };
-$('menuBtn').onclick = () => { $('menuWrap').hidden = false; };
+$('menuBtn').onclick = () => { menuMode(); $('menuWrap').hidden = false; };
 $('menuWrap').onclick = e => { if (e.target.id === 'menuWrap') $('menuWrap').hidden = true; };
 $('menu').onclick = async e => {
   const a = e.target.closest('button') && e.target.closest('button').dataset.a;
   if (!a) return;
   $('menuWrap').hidden = true;
+  if (curGroup) return groupMenu(a);
   const id = current;
   if (a === 'call') toast('Calls arrive in a later update');
   else if (a === 'search') openCS();
@@ -1155,8 +1470,11 @@ $('menu').onclick = async e => {
   else if (a === 'report') $('repDlg').showModal();
 };
 $('unblockBtn').onclick = () => toggleBlock(current);
-$('peerBtn').onclick = () => openDetails(current);
-$('detBack').onclick = () => { chatChrome(); renderMsgs(); show('chat'); };
+$('peerBtn').onclick = () => curGroup ? openGroupInfo(curGroup) : openDetails(current);
+$('detBack').onclick = () => {
+  if (curGroup){ current = null; if (detReturn === 'ginfo') openGroupInfo(curGroup); else { groupChrome(); renderMsgs(); show('chat'); } detReturn = null; return; }
+  chatChrome(); renderMsgs(); show('chat');
+};
 $('detCall').onclick = () => toast('Calls arrive in a later update');
 $('detVideo').onclick = () => toast('Video calls arrive in a later update');
 $('detEdit').onclick = () => { $('nickIn').value = st(current).nickname || ''; $('nickDlg').showModal(); $('nickIn').focus(); };
