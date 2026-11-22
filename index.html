@@ -42,6 +42,7 @@ dialog{border:0;border-radius:14px;padding:18px;width:min(92vw,360px);background
 dialog::backdrop{background:rgba(0,0,0,.5)}
 dialog h2{margin:0 0 10px;font-size:18px}
 .fp{font:600 18px/1.6 ui-monospace,Menlo,monospace;letter-spacing:1px;text-align:center;padding:10px;background:var(--bg);border-radius:10px}
+hr{border:0;border-top:1px solid var(--border);margin:14px 0}
 .hint{font-size:14px;color:var(--muted);margin:0 0 10px}
 .banner{display:flex;gap:10px;align-items:center;padding:10px 14px;background:#fff4d6;color:#4a3500;font-size:14px}
 @media (prefers-color-scheme:dark){.banner{background:#3a2f0b;color:#ffe9a8}}
@@ -71,7 +72,7 @@ dialog h2{margin:0 0 10px;font-size:18px}
   </section>
 
   <section id="chat" hidden>
-    <header><button class="ghost" id="backBtn">←</button><h1 id="chatTitle"></h1><button class="ghost" id="verifyBtn">🔑 Verify</button></header>
+    <header><button class="ghost" id="backBtn">←</button><h1 id="chatTitle"></h1><button class="ghost" id="verifyBtn">🔑 Verify</button><button class="ghost" id="clearBtn" title="Clear chat">🗑</button></header>
     <div id="msgs"></div>
     <div id="composer"><input id="msgInput" placeholder="Message" autocomplete="off"><button id="sendBtn">Send</button></div>
   </section>
@@ -80,7 +81,26 @@ dialog h2{margin:0 0 10px;font-size:18px}
 <dialog id="newDlg">
   <h2>Start a chat</h2>
   <input id="newUser" placeholder="Their username" autocapitalize="off">
-  <div class="row" style="margin-top:12px"><button class="ghost" id="newCancel">Cancel</button><button id="newGo">Start</button></div>
+  <div class="row" style="margin-top:8px"><button id="newGo">Chat by username</button></div>
+  <hr>
+  <div class="row"><button id="roomCreate">Create a room code</button></div>
+  <input id="roomCode" inputmode="numeric" maxlength="5" placeholder="Or enter a 5-digit room code" style="margin-top:12px">
+  <div class="row" style="margin-top:8px"><button id="roomJoin">Join room</button></div>
+  <div id="roomMsg" class="hint" style="color:var(--danger);margin-top:8px"></div>
+  <div class="row"><button class="ghost" id="newCancel">Cancel</button></div>
+</dialog>
+
+<dialog id="roomDlg">
+  <h2>Your room code</h2>
+  <div class="fp" id="roomShow" style="font-size:38px;letter-spacing:8px"></div>
+  <p class="hint" style="margin-top:10px">Waiting for someone to enter this code. It works once and expires in 10 minutes. Share it only with the person you want to chat with.</p>
+  <div class="row"><button class="ghost" id="roomCancel">Cancel</button></div>
+</dialog>
+
+<dialog id="leaveDlg">
+  <h2>Leaving this chat</h2>
+  <p class="hint">Keep it in your chats, or clear all its messages? Clearing deletes them for both of you.</p>
+  <div class="row"><button class="ghost" id="leaveKeep" style="border:1px solid var(--accent)">Keep chat</button><button id="leaveClear">Clear chat</button></div>
 </dialog>
 
 <dialog id="verDlg">
@@ -253,6 +273,13 @@ function subscribe(){
       await loadProfiles([p.new.sender_id, p.new.recipient_id], true);
       addMsg(p.new);
     })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, p => {
+      const id = p.old && p.old.id;
+      if (id == null) return;
+      const n = msgs.length;
+      msgs = msgs.filter(m => m.id !== id);
+      if (msgs.length !== n){ renderList(); if (current) renderMsgs(); }
+    })
     .subscribe();
 }
 
@@ -337,6 +364,60 @@ function showSafety(){
   $('fp').textContent = hex.match(/.{5}/g).join(' ');
   $('verDlg').showModal();
 }
+
+/* ---------- Rooms & clearing ---------- */
+let roomTimer = null, roomPeer = null;
+
+async function createRoom(){
+  $('roomMsg').textContent = '';
+  const { data: code, error } = await sb.rpc('create_room');
+  if (error) return $('roomMsg').textContent = friendly(error);
+  $('newDlg').close();
+  $('roomShow').textContent = code;
+  $('roomDlg').showModal();
+  const started = Date.now();
+  clearInterval(roomTimer);
+  roomTimer = setInterval(async () => {
+    if (Date.now() - started > 10 * 60 * 1000 + 5000){ $('roomDlg').close(); toast('Room code expired'); return; }
+    const { data: r } = await sb.from('rooms').select('guest_id').eq('code', code).maybeSingle();
+    if (r && r.guest_id){
+      clearInterval(roomTimer); roomTimer = null;
+      $('roomDlg').close();
+      await loadProfiles([r.guest_id], true);
+      toast(`${(profiles[r.guest_id] || {}).username || 'Someone'} joined your room`);
+      roomPeer = r.guest_id;
+      openChat(r.guest_id);
+    }
+  }, 2000);
+}
+
+async function joinRoom(){
+  const code = $('roomCode').value.trim();
+  if (!/^\d{5}$/.test(code)) return $('roomMsg').textContent = 'Enter the 5-digit code';
+  $('roomJoin').disabled = true;
+  try {
+    const { data, error } = await sb.rpc('join_room', { p_code: code });
+    if (error) throw error;
+    if (!data.ok) { $('roomMsg').textContent = data.error; return; }
+    await loadProfiles([data.host_id], true);
+    $('newDlg').close(); $('roomCode').value = '';
+    roomPeer = data.host_id;
+    openChat(data.host_id);
+  } catch (e) { $('roomMsg').textContent = friendly(e); }
+  finally { $('roomJoin').disabled = false; }
+}
+
+async function clearChat(id){
+  const a = me.id;
+  const { error } = await sb.from('messages').delete()
+    .or(`and(sender_id.eq.${a},recipient_id.eq.${id}),and(sender_id.eq.${id},recipient_id.eq.${a})`);
+  if (error){ toast('Clear failed: ' + friendly(error)); return false; }
+  msgs = msgs.filter(m => otherId(m) !== id);
+  renderList(); if (current === id) renderMsgs();
+  return true;
+}
+
+function goList(){ current = null; roomPeer = null; renderList(); show('list'); }
 
 /* ---------- Key backup & restore ---------- */
 async function deriveKey(pass, salt, iter){
@@ -434,11 +515,28 @@ $('loginBtn').onclick = () => submitAuth('login');
 $('signupBtn').onclick = () => submitAuth('signup');
 $('p').addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth('login'); });
 $('logoutBtn').onclick = logout;
-$('newBtn').onclick = () => { $('newDlg').showModal(); $('newUser').focus(); };
+$('newBtn').onclick = () => { $('roomMsg').textContent = ''; $('newDlg').showModal(); };
 $('newCancel').onclick = () => $('newDlg').close();
 $('newGo').onclick = newChat;
 $('newUser').addEventListener('keydown', e => { if (e.key === 'Enter') newChat(); });
-$('backBtn').onclick = () => { current = null; renderList(); show('list'); };
+$('backBtn').onclick = () => {
+  if (current && current === roomPeer && msgs.some(m => otherId(m) === current)) $('leaveDlg').showModal();
+  else goList();
+};
+$('leaveKeep').onclick = () => { $('leaveDlg').close(); goList(); };
+$('leaveClear').onclick = async () => { const id = current; if (await clearChat(id)){ $('leaveDlg').close(); goList(); } };
+$('clearBtn').onclick = async () => {
+  if (current && confirm('Clear all messages in this chat? This deletes them for both of you.')) await clearChat(current);
+};
+$('roomCreate').onclick = createRoom;
+$('roomJoin').onclick = joinRoom;
+$('roomCode').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, ''); });
+$('roomCode').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(); });
+$('roomDlg').addEventListener('close', () => { clearInterval(roomTimer); roomTimer = null; });
+$('roomCancel').onclick = async () => {
+  const c = $('roomShow').textContent; $('roomDlg').close();
+  try { await sb.rpc('cancel_room', { p_code: c }); } catch {}
+};
 $('verifyBtn').onclick = showSafety;
 $('verClose').onclick = () => $('verDlg').close();
 $('sendBtn').onclick = send;
