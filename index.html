@@ -981,16 +981,23 @@ function fillProfile(){
   $('profEmail').textContent = p.contact_email || 'Not added';
   $('profPhone').textContent = p.phone || 'Not added';
 }
+async function loadImage(file){
+  if (window.createImageBitmap){ try { return await createImageBitmap(file); } catch {} }
+  const url = URL.createObjectURL(file), img = new Image(); img.src = url;
+  try { await img.decode(); return img; } finally { setTimeout(() => URL.revokeObjectURL(url), 5000); }
+}
 async function setPhoto(file){
+  let url;
   try {
-    const bmp = await createImageBitmap(file), S = 192, c = document.createElement('canvas'); c.width = c.height = S;
-    const m = Math.min(bmp.width, bmp.height);
-    c.getContext('2d').drawImage(bmp, (bmp.width - m) / 2, (bmp.height - m) / 2, m, m, 0, 0, S, S);
-    const url = c.toDataURL('image/jpeg', .8);
-    const { error } = await sb.from('profile_photos').upsert({ user_id: me.id, photo: url });
-    if (error) throw error;
-    photos[me.id] = url; photoByName[me.username] = url; afterPhoto();
-  } catch { toast('Could not use that photo'); }
+    const img = await loadImage(file), w = img.width || img.naturalWidth, ht = img.height || img.naturalHeight;
+    const S = 192, c = document.createElement('canvas'); c.width = c.height = S;
+    const m = Math.min(w, ht);
+    c.getContext('2d').drawImage(img, (w - m) / 2, (ht - m) / 2, m, m, 0, 0, S, S);
+    url = c.toDataURL('image/jpeg', .8);
+  } catch { return toast('Could not read that image. Try a JPG or PNG.'); }
+  const { error } = await sb.from('profile_photos').upsert({ user_id: me.id, photo: url });
+  if (error) return toast('Could not save photo: ' + friendly(error));
+  photos[me.id] = url; photoByName[me.username] = url; afterPhoto(); toast('Photo updated');
 }
 async function removePhoto(){
   const { error } = await sb.from('profile_photos').delete().eq('user_id', me.id);
@@ -1030,7 +1037,7 @@ const VIEWS = {
   },
   profile(b){
     const p = profiles[me.id] || {};
-    const file = el('input', { type: 'file', accept: 'image/*', hidden: true, onchange: async e => { const f = e.target.files[0]; if (f) await setPhoto(f); } });
+    const file = el('input', { type: 'file', accept: 'image/*', hidden: true, onchange: async e => { const f = e.target.files[0]; if (f) await setPhoto(f); e.target.value = ''; } });
     const dn = el('input', { value: p.display_name || '', maxLength: 30, placeholder: 'Display name' });
     const bio = el('textarea', { value: p.bio || '', maxLength: 150, rows: 3, placeholder: 'Write a short bio' });
     const em = el('input', { value: p.contact_email || '', type: 'email', placeholder: 'Email' });
