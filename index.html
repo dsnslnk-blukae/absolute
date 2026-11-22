@@ -3,11 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0f766e">
-<title>SecureChat</title>
+<meta name="theme-color" content="#120d1f">
+<title>Absol</title>
 <style>
-:root{--bg:#f6f7f9;--surface:#fff;--text:#14181f;--muted:#6b7280;--accent:#0f766e;--accent-text:#fff;--mine:#0f766e;--mine-text:#fff;--theirs:#e8ebef;--border:#e2e5ea;--danger:#c0392b;color-scheme:light}
-@media (prefers-color-scheme:dark){:root{--bg:#0e1116;--surface:#171b22;--text:#e8ebef;--muted:#8b93a1;--accent:#2dd4bf;--accent-text:#04201d;--mine:#0f766e;--mine-text:#fff;--theirs:#232933;--border:#262c36;--danger:#ff6b5b;color-scheme:dark}}
+:root{--bg:#120d1f;--surface:#1b1430;--surface2:#241a3d;--text:#efeaff;--muted:#a094bd;--accent:#b69cff;--accent2:#e4d9ff;--accent-text:#1a0f33;--mine:#a68bff;--mine-text:#160f2b;--theirs:#2a2045;--border:#2e2447;--danger:#ff7a8a;color-scheme:dark}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
@@ -49,12 +48,37 @@ hr{border:0;border-top:1px solid var(--border);margin:14px 0}
 .banner button{white-space:nowrap;padding:8px 12px}
 #toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s}
 #toast.on{opacity:.95}
+.banner{background:#33264f;color:var(--accent2)}
+.top{display:flex;align-items:center;gap:10px;padding:14px 14px 8px}
+.brand{margin:0;font-size:26px;font-weight:800;letter-spacing:.5px;color:var(--accent);flex:1}
+.topr{display:flex;align-items:center;gap:10px}
+.searchpill{background:var(--surface2);color:var(--muted);border-radius:20px;padding:8px 14px;font-size:14px}
+.iconbtn{background:var(--surface2);color:var(--accent);width:40px;height:40px;padding:0;border-radius:14px;flex:none}
+.av{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#1a0f33;flex:none}
+.av.big{width:96px;height:96px;font-size:40px}
+#avatarBtn{padding:0;background:none;border-radius:50%;width:40px;height:40px;display:grid;place-items:center}
+#avatarBtn .av{width:40px;height:40px;font-size:16px}
+.switch{position:relative;display:flex;margin:4px 10px 10px;padding:4px;background:var(--surface2);border-radius:24px}
+.switch .ind{position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);border-radius:20px;background:var(--accent)}
+.switch button{flex:1;position:relative;z-index:1;background:none;color:var(--accent2);padding:10px;border-radius:20px;font-weight:600}
+.switch button.on{color:var(--accent-text)}
+.viewport{flex:1;min-height:0;overflow:hidden;padding:0 10px 10px}
+.track{display:flex;gap:12px;height:100%}
+.card{flex:0 0 100%;min-width:0;height:100%;position:relative;display:flex;flex-direction:column;overflow:hidden;background:#09060f;border:1px solid #2a2044;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.55)}
+.fab{position:absolute;right:16px;bottom:16px;width:56px;height:56px;padding:0;border-radius:20px;font-size:30px;line-height:1;box-shadow:0 6px 18px rgba(182,156,255,.35)}
+.convo{display:flex;gap:12px;align-items:center;border-bottom:1px solid #1d1530}
+.convo .tx{min-width:0;flex:1}
+.sec{padding:12px 14px 6px;color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:.08em}
+.results{flex:1;overflow-y:auto}
+#searchInput{flex:1}
+.pbody{display:flex;flex-direction:column;align-items:center;gap:6px;padding:24px 20px}
+.pbody .row{width:100%}
 </style>
 </head>
 <body>
 <div id="app">
   <section id="auth" hidden>
-    <h1>🔒 SecureChat</h1>
+    <h1>Absol</h1>
     <p>End-to-end encrypted messaging.</p>
     <input id="u" placeholder="Username" autocapitalize="off" autocomplete="username">
     <input id="p" type="password" placeholder="Password (8+ characters)" autocomplete="current-password">
@@ -66,9 +90,34 @@ hr{border:0;border-top:1px solid var(--border);margin:14px 0}
   </section>
 
   <section id="list" hidden>
-    <header><h1>Chats</h1><button class="ghost" id="backupBtn" title="Back up key">🔑</button><button class="ghost" id="newBtn">+ New</button><button class="ghost" id="logoutBtn">Log out</button></header>
-    <div class="banner" id="banner" hidden><span>⚠️ Your key isn’t backed up. Clearing browser data would lose your old messages.</span><button id="bannerBtn">Back up</button></div>
-    <div id="convos"></div>
+    <div class="top">
+      <h1 class="brand">Absol</h1>
+      <div class="topr"><button class="searchpill" id="searchBtn">🔍 Search</button><button id="avatarBtn" aria-label="Profile"></button></div>
+    </div>
+    <div class="switch" id="switch"><div class="ind" id="ind"></div><button data-i="0" class="on">Chats</button><button data-i="1">Calls</button></div>
+    <div class="viewport" id="viewport"><div class="track" id="track">
+      <div class="card" id="cardChats">
+        <div class="banner" id="banner" hidden><span>⚠️ Your key isn’t backed up. Clearing browser data would lose your old messages.</span><button id="bannerBtn">Back up</button></div>
+        <div id="convos"></div>
+        <button class="fab" id="newBtn" aria-label="New chat">+</button>
+      </div>
+      <div class="card" id="cardCalls"><div class="empty">📞 No calls yet<br>Voice and video calls arrive in a later update.</div></div>
+    </div></div>
+  </section>
+
+  <section id="search" hidden>
+    <div class="top"><button class="iconbtn" id="searchBack">←</button><input id="searchInput" placeholder="Search contacts and messages" autocomplete="off"></div>
+    <div id="searchResults" class="results"></div>
+  </section>
+
+  <section id="profile" hidden>
+    <div class="top"><button class="iconbtn" id="profBack">←</button><h1 class="brand" style="font-size:20px">Profile</h1></div>
+    <div class="pbody">
+      <div id="profAv"></div><h2 id="profName" style="margin:8px 0 0"></h2>
+      <p class="hint">More profile and settings options arrive in the next update.</p>
+      <div class="row"><button id="backupBtn">🔑 Back up key</button></div>
+      <div class="row" style="margin-top:8px"><button class="ghost" id="logoutBtn" style="border:1px solid var(--border)">Log out</button></div>
+    </div>
   </section>
 
   <section id="chat" hidden>
@@ -157,7 +206,7 @@ let me = null, profiles = {}, msgs = [], current = null, channel = null;
 const b64 = u => nacl.util.encodeBase64(u);
 const unb64 = s => nacl.util.decodeBase64(s);
 
-function show(name){ for (const s of ['auth','list','chat']) $(s).hidden = s !== name; }
+function show(name){ for (const s of ['auth','list','chat','search','profile']) $(s).hidden = s !== name; if (name === 'list' && window.layoutHome) layoutHome(); }
 function toast(t){ const el = $('toast'); el.textContent = t; el.classList.add('on'); setTimeout(() => el.classList.remove('on'), 2500); }
 function friendly(e){
   const m = (e && e.message) || String(e);
@@ -223,6 +272,7 @@ async function start(){
   me = { id: uid, username: prof.username, pk: prof.public_key, sk: unb64(skStr), backedUp: !!prof.key_backup };
   profiles[uid] = prof;
   $('banner').hidden = me.backedUp;
+  $('avatarBtn').replaceChildren(avatar(me.username));
   const { data: rows, error } = await sb.from('messages').select('*').order('created_at', { ascending: true }).limit(2000);
   if (error) throw error;
   msgs = rows;
@@ -305,7 +355,8 @@ function renderList(){
     const m = last[id], d = document.createElement('div'); d.className = 'convo';
     const n = document.createElement('b'); n.textContent = (profiles[id] || {}).username || 'Unknown';
     const s = document.createElement('span'); s.textContent = (m.sender_id === me.id ? 'You: ' : '') + (decrypt(m) ?? '🔒 Can’t decrypt') + ' · ' + fmtTime(m.created_at);
-    d.append(n, s); d.onclick = () => openChat(id); box.appendChild(d);
+    const tx = document.createElement('div'); tx.className = 'tx'; tx.append(n, s);
+    d.append(avatar(n.textContent), tx); d.onclick = () => openChat(id); box.appendChild(d);
   });
 }
 
@@ -500,8 +551,77 @@ function askRestore(prof){
   });
 }
 
+/* ---------- Absol home: avatars, search, swipe cards ---------- */
+function avatar(name, cls){
+  const d = document.createElement('div'); d.className = 'av ' + (cls || '');
+  const n = name || '?'; d.textContent = n[0].toUpperCase();
+  let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) % 360;
+  d.style.background = `hsl(${255 + (h % 50)} 62% 76%)`;
+  return d;
+}
+function rowEl(id, sub){
+  const d = document.createElement('div'); d.className = 'convo';
+  const n = document.createElement('b'); n.textContent = (profiles[id] || {}).username || 'Unknown';
+  const t = document.createElement('span'); t.textContent = sub;
+  const tx = document.createElement('div'); tx.className = 'tx'; tx.append(n, t);
+  d.append(avatar(n.textContent), tx); d.onclick = () => openChat(id); return d;
+}
+function openSearch(){ $('searchInput').value = ''; renderSearch(); show('search'); $('searchInput').focus(); }
+function renderSearch(){
+  const q = $('searchInput').value.trim().toLowerCase(), box = $('searchResults'); box.textContent = '';
+  const sec = t => { const h = document.createElement('div'); h.className = 'sec'; h.textContent = t; box.appendChild(h); };
+  const last = {}; msgs.forEach(m => last[otherId(m)] = m);
+  const ids = Object.keys(last).sort((a, b) => new Date(last[b].created_at) - new Date(last[a].created_at));
+  const found = ids.filter(id => !q || ((profiles[id] || {}).username || '').includes(q));
+  if (found.length){ sec(q ? 'Contacts' : 'Recent'); found.forEach(id => box.appendChild(rowEl(id, 'Tap to open chat'))); }
+  if (q){
+    const hits = msgs.filter(m => (decrypt(m) || '').toLowerCase().includes(q)).slice(-30).reverse();
+    if (hits.length){ sec('Messages'); hits.forEach(m => box.appendChild(rowEl(otherId(m), decrypt(m)))); }
+  }
+  if (!box.children.length){ const e = document.createElement('div'); e.className = 'empty'; e.textContent = q ? 'No matches found' : 'No contacts yet'; box.appendChild(e); }
+}
+
+(function(){
+  const vp = $('viewport'), track = $('track'), cards = [$('cardChats'), $('cardCalls')], ind = $('ind');
+  const ease = 'cubic-bezier(.22,1,.36,1)';
+  let idx = 0, sx = 0, sy = 0, dx = 0, drag = false, lock = null, w = 1;
+  function apply(p, anim){
+    w = Math.max(vp.clientWidth - 20, 0);
+    const t = anim ? `transform .38s ${ease}, opacity .38s` : 'none';
+    track.style.transition = anim ? `transform .38s ${ease}` : 'none';
+    track.style.transform = `translateX(${-p * (w + 12)}px)`;
+    cards[0].style.cssText += `;transition:${t};transform:scale(${1 - .06 * p});opacity:${1 - .45 * p}`;
+    cards[1].style.cssText += `;transition:${t};transform:scale(${.94 + .06 * p});opacity:${.55 + .45 * p}`;
+    ind.style.transition = anim ? `transform .38s ${ease}` : 'none';
+    ind.style.transform = `translateX(${p * 100}%)`;
+    document.querySelectorAll('#switch button').forEach((b, i) => b.classList.toggle('on', Math.round(p) === i));
+  }
+  window.layoutHome = () => apply(idx, false);
+  document.querySelectorAll('#switch button').forEach(b => b.onclick = () => { idx = +b.dataset.i; apply(idx, true); });
+  vp.addEventListener('touchstart', e => { const t = e.touches[0]; sx = t.clientX; sy = t.clientY; dx = 0; lock = null; drag = true; }, { passive: true });
+  vp.addEventListener('touchmove', e => {
+    if (!drag) return;
+    const t = e.touches[0], ax = t.clientX - sx, ay = t.clientY - sy;
+    if (lock === null && (Math.abs(ax) > 8 || Math.abs(ay) > 8)) lock = Math.abs(ax) > Math.abs(ay) ? 'x' : 'y';
+    if (lock !== 'x') return;
+    dx = ax; apply(Math.max(-.12, Math.min(1.12, idx - dx / w)), false);
+  }, { passive: true });
+  vp.addEventListener('touchend', () => {
+    if (!drag) return; drag = false;
+    if (lock !== 'x') return;
+    if (dx < -w * .2) idx = 1; else if (dx > w * .2) idx = 0;
+    apply(idx, true);
+  });
+  window.addEventListener('resize', () => apply(idx, false));
+})();
+
 /* ---------- Wire up ---------- */
 $('backupBtn').onclick = openBackupDlg;
+$('searchBtn').onclick = openSearch;
+$('searchBack').onclick = () => show('list');
+$('searchInput').addEventListener('input', renderSearch);
+$('avatarBtn').onclick = () => { $('profName').textContent = me.username; $('profAv').replaceChildren(avatar(me.username, 'big')); show('profile'); };
+$('profBack').onclick = () => show('list');
 $('bannerBtn').onclick = openBackupDlg;
 $('bkGo').onclick = createBackup;
 $('bkCancel').onclick = () => $('bkDlg').close();
