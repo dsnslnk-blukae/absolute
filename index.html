@@ -232,6 +232,23 @@ dialog{border-radius:32px;border:1px solid var(--border);padding:22px}
 @supports (corner-shape: squircle){
   .card,.scard,.switch,.switch .ind,.switch button,.iconbtn,.searchpill,.av,#avatarBtn,.b.me,.b.them,dialog,.menu,.fab,.convo,.dbio,.dacts button,.chip,.banner,button,input,textarea,select,#sendBtn{corner-shape:squircle}
 }
+.stabs{display:flex;gap:8px;padding:2px 14px 10px;overflow-x:auto;flex:none}
+.stabs .chip{flex:none;padding:9px 16px}
+.rstrip{display:flex;gap:14px;overflow-x:auto;padding:6px 16px 14px;flex:none}
+.ritem{display:flex;flex-direction:column;align-items:center;gap:7px;width:66px;flex:none;font-size:12px;cursor:pointer}
+.ritem .av{width:54px;height:54px;font-size:20px}
+.ritem span{max-width:66px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--accent2)}
+.rchips{display:flex;flex-wrap:wrap;gap:8px;padding:2px 16px 10px}
+.shead{display:flex;align-items:center;gap:10px;padding:12px 18px 4px;cursor:pointer}
+.shead .r{margin-left:auto;color:var(--muted);font-size:13px}
+.sres,.lres{margin:4px 14px;padding:11px 16px;border-radius:22px;background:color-mix(in srgb,var(--surface) 80%,transparent);cursor:pointer;overflow-wrap:anywhere}
+.sres{margin-left:58px}
+.sres small,.lres small{display:block;color:var(--muted);margin-top:4px;font-size:12px}
+.lres a{color:var(--accent)}
+.smore{margin:2px 14px 6px 58px;padding:6px 16px;color:var(--accent);font-size:14px;cursor:pointer}
+mark{background:color-mix(in srgb,var(--accent) 38%,transparent);color:inherit;border-radius:6px;padding:0 2px}
+.b.flash{animation:flashb 2s var(--ease)}
+@keyframes flashb{0%,55%{box-shadow:0 0 0 4px var(--accent)}100%{box-shadow:0 0 0 0 transparent}}
 </style>
 </head>
 <body>
@@ -265,7 +282,8 @@ dialog{border-radius:32px;border:1px solid var(--border);padding:22px}
   </section>
 
   <section id="search" hidden>
-    <div class="top"><button class="iconbtn" id="searchBack">{{arrow-left}}</button><input id="searchInput" placeholder="Search contacts and messages" autocomplete="off"></div>
+    <div class="top"><button class="iconbtn" id="searchBack">{{arrow-left}}</button><input id="searchInput" placeholder="Search chats, groups, messages" autocomplete="off"></div>
+    <div class="stabs" id="stabs"></div>
     <div id="searchResults" class="results"></div>
   </section>
 
@@ -667,9 +685,9 @@ function renderMsgs(){
     b.className = 'b ' + (m.sender_id === me.id ? 'me' : 'them') + (t == null ? ' fail' : '') + (m.pending ? ' pending' : '');
     const tx = document.createElement('span'); tx.textContent = t ?? '{{lock}} Can’t decrypt this message';
     const sm = document.createElement('small'); sm.textContent = fmtTime(m.created_at);
-    b.append(tx, sm); box.appendChild(b);
+    b.dataset.mid = m.id; b.append(tx, sm); box.appendChild(b);
   });
-  box.scrollTop = box.scrollHeight;
+  box.scrollTop = box.scrollHeight; applyJump(box);
 }
 
 async function openChat(id){
@@ -878,25 +896,168 @@ function rowEl(id, sub){
   const tx = document.createElement('div'); tx.className = 'tx'; tx.append(n, t);
   d.append(avatar((profiles[id] || {}).username), tx); d.onclick = () => openChat(id); return d;
 }
-function openSearch(){ $('searchInput').value = ''; renderSearch(); show('search'); $('searchInput').focus(); }
-function renderSearch(){
-  const q = $('searchInput').value.trim().toLowerCase(), box = $('searchResults'); box.textContent = '';
-  const sec = t => { const h = document.createElement('div'); h.className = 'sec'; h.textContent = t; box.appendChild(h); };
+/* ---------- Stage 6: full search ---------- */
+let stab = 'all', jump = null;
+const STABS = [['all','All'],['chats','Chats'],['groups','Groups'],['messages','Messages'],['links','Links'],['media','Media']];
+const norm = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const wordsOf = t => t.split(/[^a-z0-9\u00c0-\uffff]+/).filter(Boolean);
+const tokensOf = q => norm(q).split(/\s+/).filter(Boolean);
+function lev(a, b, max){
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++){
+    const cur = [i]; let min = i;
+    for (let j = 1; j <= b.length; j++){
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (cur[j] < min) min = cur[j];
+    }
+    if (min > max) return max + 1;
+    prev = cur;
+  }
+  return prev[b.length];
+}
+function tokHit(tok, text, ws){
+  if (text.includes(tok)) return true;
+  const max = tok.length >= 8 ? 2 : tok.length >= 4 ? 1 : 0; if (!max) return false;
+  return ws.some(w => lev(tok, w, max) <= max || (w.length > tok.length && lev(tok, w.slice(0, tok.length), max) <= max));
+}
+function matches(text, toks){
+  if (!toks.length) return true;
+  const t = norm(text), ws = wordsOf(t);
+  return toks.every(k => tokHit(k, t, ws));
+}
+const rsKey = () => 'absol-rs:' + me.id;
+function getRS(){ try { return JSON.parse(localStorage.getItem(rsKey())) || []; } catch { return []; } }
+function saveRS(q){
+  q = (q || '').trim(); if (q.length < 2) return;
+  try { localStorage.setItem(rsKey(), JSON.stringify([q, ...getRS().filter(x => x !== q)].slice(0, 8))); } catch {}
+}
+function recentChats(){
   const last = {}; msgs.filter(visible).forEach(m => last[otherId(m)] = m);
-  const ids = Object.keys(last).sort((a, b) => (st(b).favorite ? 1 : 0) - (st(a).favorite ? 1 : 0) || new Date(last[b].created_at) - new Date(last[a].created_at));
-  const found = ids.filter(id => !q || (dname(id) + ' ' + ((profiles[id] || {}).username || '')).toLowerCase().includes(q));
-  if (found.length){ sec(q ? 'Contacts' : 'Recent'); found.forEach(id => box.appendChild(rowEl(id, 'Tap to open chat'))); }
-  if (q){
-    const hits = msgs.filter(m => visible(m) && !st(otherId(m)).locked && (decrypt(m) || '').toLowerCase().includes(q)).slice(-30).reverse();
-    if (hits.length){ sec('Messages'); hits.forEach(m => box.appendChild(rowEl(otherId(m), decrypt(m)))); }
+  const items = Object.keys(last).map(id => ({ kind: 'u', id, m: last[id], t: +new Date(last[id].created_at) }));
+  Object.keys(groups).forEach(id => { const gm = lastGroupMsg(id); items.push({ kind: 'g', id, m: gm, t: +new Date(gm ? gm.created_at : groups[id].created_at) }); });
+  return items.sort((a, b) => b.t - a.t);
+}
+const openItem = it => it.kind === 'u' ? openChat(it.id) : openGroup(it.id);
+function preview(it){
+  if (it.kind === 'u' && st(it.id).locked) return 'Locked chat';
+  if (!it.m) return it.kind === 'g' ? 'Group' : '';
+  const t = it.kind === 'u' ? decrypt(it.m) : decryptG(it.m);
+  return (it.m.sender_id === me.id ? 'You: ' : '') + (t ?? 'Can’t decrypt');
+}
+function msgHits(toks){
+  const out = [];
+  msgs.forEach(m => { if (!visible(m)) return; const id = otherId(m); if (st(id).locked) return; const t = decrypt(m); if (t && matches(t, toks)) out.push({ kind: 'u', cid: id, m, t }); });
+  gmsgs.forEach(m => { if (!gvisible(m)) return; const t = decryptG(m); if (t && matches(t, toks)) out.push({ kind: 'g', cid: m.group_id, m, t }); });
+  return out.sort((a, b) => new Date(b.m.created_at) - new Date(a.m.created_at));
+}
+function linkHits(toks){
+  const re = /https?:\/\/[^\s<>"']+/gi, out = [];
+  const add = (kind, cid, m, t) => (t.match(re) || []).forEach(u => { if (matches(u + ' ' + t, toks)) out.push({ kind, cid, m, u, t }); });
+  msgs.forEach(m => { if (!visible(m) || st(otherId(m)).locked) return; const t = decrypt(m); if (t) add('u', otherId(m), m, t); });
+  gmsgs.forEach(m => { if (!gvisible(m)) return; const t = decryptG(m); if (t) add('g', m.group_id, m, t); });
+  return out.sort((a, b) => new Date(b.m.created_at) - new Date(a.m.created_at));
+}
+function snippet(text, toks){
+  const t = norm(text); let idx = -1;
+  toks.forEach(k => { const i = t.indexOf(k); if (i >= 0 && (idx < 0 || i < idx)) idx = i; });
+  const start = Math.max(0, (idx < 0 ? 0 : idx) - 24), part = text.slice(start, start + 110);
+  const span = el('span'); if (start > 0) span.append('…');
+  if (toks.length){
+    const re = new RegExp('(' + toks.map(k => k.replace(/[.*+?^$|(){}\[\]\\]/g, '\\$&')).join('|') + ')', 'gi');
+    part.split(re).forEach((x, i) => span.append(i % 2 ? el('mark', { textContent: x }) : x));
+  } else span.append(part);
+  if (start + 110 < text.length) span.append('…');
+  return span;
+}
+function jumpOpen(h){
+  saveRS($('searchInput').value);
+  jump = { id: h.m.id, until: Date.now() + 2200 };
+  if (h.kind === 'u') openChat(h.cid); else openGroup(h.cid);
+}
+function applyJump(box){
+  if (!jump) return;
+  if (Date.now() > jump.until){ jump = null; return; }
+  const id = jump.id;
+  const go = () => { const e = box.querySelector('[data-mid="' + id + '"]'); if (e){ e.scrollIntoView({ block: 'center' }); e.classList.add('flash'); } };
+  go(); setTimeout(go, 90); setTimeout(go, 450);
+}
+function openSearch(){
+  stab = 'all'; $('searchInput').value = '';
+  $('stabs').replaceChildren(...STABS.map(([k, l]) => {
+    const b = el('button', { className: 'chip', textContent: l, onclick: () => { stab = k; renderSearch(); } }); b.dataset.t = k; return b;
+  }));
+  renderSearch(); show('search'); $('searchInput').focus();
+}
+function renderSearch(){
+  const q = $('searchInput').value.trim(), toks = tokensOf(q), box = $('searchResults'); box.textContent = '';
+  document.querySelectorAll('#stabs .chip').forEach(b => b.classList.toggle('on', b.dataset.t === stab));
+  const sec = t => box.appendChild(el('div', { className: 'sec', textContent: t }));
+  const none = (ic, t) => box.appendChild(el('div', { className: 'empty', textContent: '{{' + ic + '}} ' + t }));
+  const rec = recentChats(), all = stab === 'all';
+  const nameOk = it => matches(it.kind === 'u' ? dname(it.id) + ' ' + ((profiles[it.id] || {}).username || '') : groups[it.id].name, toks);
+  const chatRow = it => {
+    const d = it.kind === 'u' ? rowEl(it.id, preview(it)) : gRowEl(it.id, preview(it));
+    d.onclick = () => { saveRS(q); openItem(it); }; return d;
+  };
+  const who = h => (h.m.sender_id === me.id ? 'You' : dname(h.m.sender_id));
+  const chatName = h => h.kind === 'u' ? dname(h.cid) : groups[h.cid].name;
+  const msgResults = (hits, limit) => {
+    const by = new Map();
+    hits.forEach(h => { const k = h.kind + ':' + h.cid; if (!by.has(k)) by.set(k, []); by.get(k).push(h); });
+    [...by.values()].slice(0, limit).forEach(hs => {
+      const h0 = hs[0], nm = chatName(h0), open = () => { saveRS(q); openItem({ kind: h0.kind, id: h0.cid }); };
+      box.appendChild(el('div', { className: 'shead', onclick: open },
+        h0.kind === 'u' ? avatar((profiles[h0.cid] || {}).username, 'sm') : avatar(nm, 'sm grp'),
+        el('b', { textContent: nm }), el('span', { className: 'r', textContent: hs.length + (hs.length === 1 ? ' match' : ' matches') })));
+      hs.slice(0, 3).forEach(h => box.appendChild(el('div', { className: 'sres', onclick: () => jumpOpen(h) }, snippet(h.t, toks), el('small', { textContent: who(h) + ' · ' + fmtTime(h.m.created_at) }))));
+      if (hs.length > 3) box.appendChild(el('div', { className: 'smore', textContent: '+ ' + (hs.length - 3) + ' more in this chat', onclick: open }));
+    });
+  };
+  const linkRow = h => box.appendChild(el('div', { className: 'lres', onclick: () => jumpOpen(h) },
+    el('a', { href: h.u, target: '_blank', rel: 'noopener noreferrer', textContent: h.u, onclick: e => e.stopPropagation() }),
+    el('small', { textContent: who(h) + ' · ' + chatName(h) + ' · ' + fmtTime(h.m.created_at) })));
+
+  if (all && !q){
+    if (rec.length){
+      sec('Recent');
+      const strip = el('div', { className: 'rstrip' });
+      rec.slice(0, 10).forEach(it => {
+        const nm = it.kind === 'u' ? dname(it.id) : groups[it.id].name;
+        strip.appendChild(el('div', { className: 'ritem', onclick: () => openItem(it) }, it.kind === 'u' ? avatar((profiles[it.id] || {}).username) : avatar(nm, 'grp'), el('span', { textContent: nm })));
+      });
+      box.appendChild(strip);
+    }
+    const rs = getRS();
+    if (rs.length){
+      sec('Recent searches');
+      const w = el('div', { className: 'rchips' });
+      rs.forEach(x => w.appendChild(el('button', { className: 'chip', textContent: x, onclick: () => { $('searchInput').value = x; renderSearch(); } })));
+      w.appendChild(el('button', { className: 'chip', textContent: 'Clear', onclick: () => { try { localStorage.removeItem(rsKey()); } catch {} renderSearch(); } }));
+      box.appendChild(w);
+    }
+    if (rec.length){ sec('Recent chats'); rec.slice(0, 8).forEach(it => box.appendChild(chatRow(it))); } else none('chat', 'No chats yet');
+    return;
   }
-  if (q){
-    const gh = Object.values(groups).filter(g => g.name.toLowerCase().includes(q));
-    if (gh.length){ sec('Groups'); gh.forEach(g => box.appendChild(gRowEl(g.id, 'Group'))); }
-    const gm = gmsgs.filter(m => gvisible(m) && (decryptG(m) || '').toLowerCase().includes(q)).slice(-30).reverse();
-    if (gm.length){ sec('Group messages'); gm.forEach(m => box.appendChild(gRowEl(m.group_id, dname(m.sender_id) + ': ' + decryptG(m)))); }
+  if (all || stab === 'chats'){
+    const ppl = rec.filter(it => it.kind === 'u' && nameOk(it));
+    if (ppl.length){ sec('Chats'); ppl.slice(0, all ? 4 : 999).forEach(it => box.appendChild(chatRow(it))); }
   }
-  if (!box.children.length){ const e = document.createElement('div'); e.className = 'empty'; e.textContent = q ? 'No matches found' : 'No contacts yet'; box.appendChild(e); }
+  if (all || stab === 'groups'){
+    const gr = rec.filter(it => it.kind === 'g' && nameOk(it));
+    if (gr.length){ sec('Groups'); gr.slice(0, all ? 4 : 999).forEach(it => box.appendChild(chatRow(it))); }
+  }
+  if (stab === 'messages' && !q) none('search', 'Type to search your messages');
+  if (q && (all || stab === 'messages')){
+    const hits = msgHits(toks);
+    if (hits.length){ sec('Messages'); msgResults(hits, all ? 5 : 999); }
+  }
+  if (all || stab === 'links'){
+    const ls = linkHits(toks);
+    if (ls.length){ sec('Links'); ls.slice(0, all ? 3 : 200).forEach(linkRow); }
+  }
+  if (stab === 'media') none('image', 'Photos, videos and documents will appear here once file sharing arrives.');
+  if (!box.children.length) none('search', q ? 'No matches for “' + q + '”' : 'Nothing here yet');
 }
 
 (function(){
@@ -1391,6 +1552,7 @@ function renderGroupMsgs(){
     const mine = m.sender_id === me.id, t = decryptG(m);
     const b = el('div', { className: 'b ' + (mine ? 'me' : 'them') + (t == null ? ' fail' : '') + (m.pending ? ' pending' : '') },
       el('span', { textContent: t ?? '{{lock}} Can’t decrypt this message' }), el('small', { textContent: fmtTime(m.created_at) }));
+    b.dataset.mid = m.id;
     if (mine) box.appendChild(b);
     else {
       const sid = m.sender_id, open = () => { detReturn = 'chat'; openDetails(sid); };
@@ -1400,7 +1562,7 @@ function renderGroupMsgs(){
     }
     prev = m.sender_id;
   });
-  box.scrollTop = box.scrollHeight;
+  box.scrollTop = box.scrollHeight; applyJump(box);
 }
 async function sendGroup(){
   const t = $('msgInput').value.trim(), gid = curGroup;
@@ -1537,131 +1699,4 @@ const SVGNS = 'http://www.w3.org/2000/svg', TOKEN_RE = /\{\{([a-z0-9-]+)\}\}/g;
 (function(){
   const sp = document.createElementNS(SVGNS, 'svg');
   sp.setAttribute('style', 'position:absolute;width:0;height:0;overflow:hidden'); sp.setAttribute('aria-hidden', 'true');
-  sp.innerHTML = Object.entries(ICONS).map(([k, v]) => `<symbol id="i-${k}" viewBox="0 0 24 24">${v}</symbol>`).join('');
-  document.body.prepend(sp);
-})();
-function svgFor(name){
-  const s = document.createElementNS(SVGNS, 'svg'), u = document.createElementNS(SVGNS, 'use');
-  s.setAttribute('class', 'i' + (name === 'star-fill' ? ' fill' : name === 'dot' ? ' online' : ''));
-  s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
-  u.setAttribute('href', '#i-' + name); s.appendChild(u); return s;
-}
-function iconize(root){
-  if (!root) return;
-  const top = root.nodeType === 3 ? root.parentNode : root; if (!top || top.nodeType !== 1 && top.nodeType !== 9) return;
-  const list = [], w = document.createTreeWalker(top, NodeFilter.SHOW_TEXT);
-  while (w.nextNode()){
-    const n = w.currentNode;
-    if (/^(SCRIPT|STYLE|TEXTAREA|OPTION|TITLE)$/.test(n.parentNode.nodeName)) continue;
-    if (n.nodeValue.includes('{{')) list.push(n);
-  }
-  list.forEach(n => {
-    const str = n.nodeValue, frag = document.createDocumentFragment(); let last = 0;
-    str.replace(TOKEN_RE, (m, name, idx) => { if (idx > last) frag.append(str.slice(last, idx)); if (ICONS[name]) frag.append(svgFor(name)); last = idx + m.length; return m; });
-    if (last < str.length) frag.append(str.slice(last));
-    n.replaceWith(frag);
-  });
-}
-new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => iconize(n)))).observe(document.body, { childList: true, subtree: true });
-iconize(document.body);
-
-/* ---------- Wire up ---------- */
-$('backupBtn').onclick = openBackupDlg;
-$('searchBtn').onclick = openSearch;
-$('searchBack').onclick = () => show('list');
-$('searchInput').addEventListener('input', renderSearch);
-$('avatarBtn').onclick = () => { fillProfile(); show('profile'); };
-$('profBack').onclick = () => show('list');
-$('newGroup').onclick = newGroupFlow;
-$('giBack').onclick = () => { groupChrome(); renderMsgs(); show('chat'); };
-$('settingsBtn').onclick = () => { sview = 'main'; gotoView('main'); };
-$('setBack').onclick = () => { if (sview === 'main'){ fillProfile(); show('profile'); } else gotoView('main'); };
-$('cnCancel').onclick = () => $('cnDlg').close();
-$('bannerBtn').onclick = openBackupDlg;
-$('bkGo').onclick = createBackup;
-$('bkCancel').onclick = () => $('bkDlg').close();
-$('bkClose').onclick = () => $('bkDlg').close();
-$('bkShare').onclick = saveBackupFile;
-$('bkCopy').onclick = async () => {
-  try { await navigator.clipboard.writeText(lastBackup); toast('Backup code copied. Paste it into a Drive doc or note.'); }
-  catch { toast('Copy failed. Use the file button instead.'); }
-};
-$('loginBtn').onclick = () => submitAuth('login');
-$('signupBtn').onclick = () => submitAuth('signup');
-$('p').addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth('login'); });
-$('logoutBtn').onclick = logout;
-$('newBtn').onclick = () => { $('roomMsg').textContent = ''; $('newDlg').showModal(); };
-$('newCancel').onclick = () => $('newDlg').close();
-$('newGo').onclick = newChat;
-$('newUser').addEventListener('keydown', e => { if (e.key === 'Enter') newChat(); });
-$('backBtn').onclick = () => {
-  if (current && current === roomPeer && msgs.some(m => otherId(m) === current)) $('leaveDlg').showModal();
-  else goList();
-};
-$('leaveKeep').onclick = () => { $('leaveDlg').close(); goList(); };
-$('leaveClear').onclick = async () => { const id = current; if (await clearChat(id)){ $('leaveDlg').close(); goList(); } };
-$('menuBtn').onclick = () => { menuMode(); $('menuWrap').hidden = false; };
-$('menuWrap').onclick = e => { if (e.target.id === 'menuWrap') $('menuWrap').hidden = true; };
-$('menu').onclick = async e => {
-  const a = e.target.closest('button') && e.target.closest('button').dataset.a;
-  if (!a) return;
-  $('menuWrap').hidden = true;
-  if (curGroup) return groupMenu(a);
-  const id = current;
-  if (a === 'call') toast('Calls arrive in a later update');
-  else if (a === 'search') openCS();
-  else if (a === 'fav'){ if (await setSetting(id, { favorite: !st(id).favorite })){ chatChrome(); renderList(); } }
-  else if (a === 'verify') showSafety();
-  else if (a === 'clear'){ if (confirm('Clear all messages in this chat? This deletes them for both of you.')) await clearChat(id); }
-  else if (a === 'delete') deleteChat(id);
-  else if (a === 'block') toggleBlock(id);
-  else if (a === 'report') $('repDlg').showModal();
-};
-$('unblockBtn').onclick = () => toggleBlock(current);
-$('peerBtn').onclick = () => curGroup ? openGroupInfo(curGroup) : openDetails(current);
-$('detBack').onclick = () => {
-  if (curGroup){ current = null; if (detReturn === 'ginfo') openGroupInfo(curGroup); else { groupChrome(); renderMsgs(); show('chat'); } detReturn = null; return; }
-  chatChrome(); renderMsgs(); show('chat');
-};
-$('detCall').onclick = () => toast('Calls arrive in a later update');
-$('detVideo').onclick = () => toast('Video calls arrive in a later update');
-$('detEdit').onclick = () => { $('nickIn').value = st(current).nickname || ''; $('nickDlg').showModal(); $('nickIn').focus(); };
-$('nickCancel').onclick = () => $('nickDlg').close();
-$('nickSave').onclick = async () => {
-  const v = $('nickIn').value.trim().slice(0, 30);
-  if (await setSetting(current, { nickname: v || null })){ $('nickDlg').close(); fillDetails(); chatChrome(); renderList(); }
-};
-$('mediaHead').onclick = () => { const o = $('mediaBody').hidden; $('mediaBody').hidden = !o; $('mediaArrow').textContent = o ? '{{chev-up}}' : '{{chev-down}}'; if (o) renderMedia(); };
-document.querySelectorAll('#mediaBody .tabs .chip').forEach(b => b.onclick = () => { mediaTab = b.dataset.t; renderMedia(); });
-$('swLock').onclick = async () => {
-  const on = !st(current).locked;
-  if (await setSetting(current, { locked: on })){ fillDetails(); renderList(); toast(on ? 'Chat locked. Your password is needed to open it.' : 'Chat unlocked'); }
-};
-$('swBlock').onclick = async () => { await toggleBlock(current); fillDetails(); };
-$('csInput').addEventListener('input', e => { cs.q = e.target.value.trim().toLowerCase(); renderMsgs(); });
-$('csLinks').onclick = () => { cs.links = !cs.links; $('csLinks').classList.toggle('on', cs.links); renderMsgs(); };
-$('csClose').onclick = () => { closeCS(); renderMsgs(); };
-$('repCancel').onclick = () => $('repDlg').close();
-$('repGo').onclick = async () => {
-  const { error } = await sb.from('reports').insert({ reporter_id: me.id, reported_id: current, reason: $('repReason').value, note: $('repNote').value.trim() || null });
-  $('repDlg').close(); $('repNote').value = '';
-  toast(error ? 'Could not send report' : 'Report sent. Thank you.');
-};
-$('roomCreate').onclick = createRoom;
-$('roomJoin').onclick = joinRoom;
-$('roomCode').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, ''); });
-$('roomCode').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(); });
-$('roomDlg').addEventListener('close', () => { clearInterval(roomTimer); roomTimer = null; });
-$('roomCancel').onclick = async () => {
-  const c = $('roomShow').textContent; $('roomDlg').close();
-  try { await sb.rpc('cancel_room', { p_code: c }); } catch {}
-};
-$('verClose').onclick = () => $('verDlg').close();
-$('sendBtn').onclick = send;
-$('msgInput').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
-
-applyTheme(localStorage.getItem('absol-theme') || 'lavender');
-start().catch(e => { console.error(e); show('auth'); $('err').textContent = friendly(e); });
-</script>
-</body>
-</html>
+  sp.innerHTML = 
