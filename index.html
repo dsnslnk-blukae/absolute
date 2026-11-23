@@ -2205,5 +2205,267 @@ start().catch(e => { console.error(e); show('auth'); $('err').textContent = frie
   }, true);
 })();
   </script>
+  <style>
+#callUI{position:fixed;inset:0;z-index:90;display:flex;flex-direction:column;align-items:center;justify-content:space-between;background:radial-gradient(120% 55% at 50% -8%,color-mix(in srgb,var(--accent) 24%,transparent),transparent 62%),var(--bg);color:var(--text);padding:calc(40px + env(safe-area-inset-top,0px)) 20px calc(34px + env(safe-area-inset-bottom,0px))}
+#rVid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;opacity:0;z-index:0}
+#callUI.vid.live #rVid{opacity:1}
+#lVid{display:none;position:absolute;right:14px;top:calc(14px + env(safe-area-inset-top,0px));width:96px;height:132px;object-fit:cover;border-radius:18px;background:#000;transform:scaleX(-1);z-index:2}
+#callUI.vid #lVid{display:block}
+.cinfo{position:relative;z-index:2;text-align:center;margin-top:10vh;text-shadow:0 1px 8px rgba(0,0,0,.5)}
+.cinfo h2{margin:14px 0 4px}
+#cStat{margin:0;color:var(--muted)}
+#callUI.vid.live #cAv{display:none}
+#callUI.vid.live #cStat,#callUI.vid.live .cinfo h2{color:#fff}
+.cctl{position:relative;z-index:2}
+.cbtns{display:flex;gap:20px;justify-content:center}
+.cb{width:64px;height:64px;border-radius:50%;padding:0;display:grid;place-items:center;background:var(--surface2);color:var(--text);background-image:none}
+.cb .i{width:26px;height:26px;margin:0}
+.cb.on{background:var(--accent);color:var(--accent-text)}
+.cb.red{background:#e5484d;color:#fff}
+.cb.red .i{transform:rotate(135deg)}
+.cb.green{background:#2fb86b;color:#fff}
+.callrow .miss{color:var(--danger)}
+</style>
+<div id="callUI" hidden>
+  <video id="rVid" autoplay playsinline></video>
+  <video id="lVid" autoplay playsinline muted></video>
+  <div class="cinfo"><div id="cAv"></div><h2 id="cName"></h2><p id="cStat"></p></div>
+  <div class="cctl">
+    <div class="cbtns" id="cIn"><button class="cb red" id="cDec" aria-label="Decline"></button><button class="cb green" id="cAcc" aria-label="Accept"></button></div>
+    <div class="cbtns" id="cAct"><button class="cb" id="cMute" aria-label="Mute"></button><button class="cb" id="cCam" aria-label="Camera"></button><button class="cb" id="cFlip" aria-label="Flip camera"></button><button class="cb red" id="cEnd" aria-label="End call"></button></div>
+  </div>
+</div>
+  <script>
+(function(){
+  const AC = window.AbsolCall = {};
+  const TURN = []; /* optional relay later, e.g. {urls:'turn:host:443',username:'u',credential:'p'} */
+  const ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }, ...TURN] };
+  const U = id => document.getElementById(id);
+  let call = null, callCh = null; const early = {}, kc = {};
+  const ckey = id => { const pub = profiles[id].public_key, k = me.id + pub; return kc[k] || (kc[k] = nacl.box.before(unb64(pub), me.sk)); };
+
+  async function sig(kind, peer, id, data){
+    try {
+      const n = nacl.randomBytes(nacl.box.nonceLength);
+      const ct = nacl.box.after(nacl.util.decodeUTF8(JSON.stringify(data || {})), n, ckey(peer));
+      const { error } = await sb.from('call_signals').insert({ call_id: id, recipient_id: peer, kind, ciphertext: b64(ct), nonce: b64(n) });
+      if (error) console.warn('signal', error.message);
+    } catch (e) { console.warn(e); }
+  }
+  const media = v => navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    video: v ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } : false });
+
+  function showUI(state){
+    const ui = U('callUI'); ui.hidden = false;
+    ui.classList.toggle('vid', !!call.video); ui.classList.toggle('live', state === 'live');
+    U('cIn').hidden = state !== 'ring'; U('cAct').hidden = state === 'ring';
+    U('cCam').hidden = U('cFlip').hidden = !call.video;
+    U('cAv').replaceChildren(avatar((profiles[call.peer] || {}).username, 'big'));
+    U('cName').textContent = dname(call.peer);
+    U('cStat').textContent = state === 'ring' ? (call.video ? 'Incoming video call' : 'Incoming voice call') : state === 'out' ? 'Calling…' : 'Connecting…';
+    if (call.video && call.local) U('lVid').srcObject = call.local;
+  }
+  function mkPC(){
+    const pc = new RTCPeerConnection(ICE); call.pc = pc;
+    call.local.getTracks().forEach(t => pc.addTrack(t, call.local));
+    pc.onicecandidate = e => { if (e.candidate && call && call.pc === pc) sig('ice', call.peer, call.id, { c: e.candidate.toJSON() }); };
+    pc.ontrack = e => { U('rVid').srcObject = e.streams[0]; U('rVid').play().catch(() => {}); };
+    pc.onconnectionstatechange = () => {
+      const s = pc.connectionState;
+      if (s === 'connected') connected();
+      else if (s === 'failed') end('failed');
+      else if (s === 'disconnected' && call){ clearTimeout(call.dt); call.dt = setTimeout(() => { if (call && call.pc === pc && pc.connectionState !== 'connected') end('failed'); }, 8000); }
+    };
+  }
+  function connected(){
+    if (!call || call.started) return;
+    call.started = Date.now(); clearTimeout(call.to); clearInterval(call.ring);
+    U('callUI').classList.add('live');
+    const tick = () => { if (!call || !call.started) return; const s = Math.floor((Date.now() - call.started) / 1000); U('cStat').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+    tick(); call.tick = setInterval(tick, 1000);
+  }
+  async function flush(){
+    const c = call; if (!c || !c.pc || !c.pc.remoteDescription) return;
+    while (c.cands.length) { try { await c.pc.addIceCandidate(c.cands.shift()); } catch {} }
+  }
+
+  async function startCall(peer, video){
+    if (!me || !peer) return;
+    if (call) return toast('You are already in a call');
+    if (st(peer).blocked) return toast('Unblock this user to call');
+    if (!navigator.mediaDevices || !window.RTCPeerConnection) return toast('Calls are not supported in this browser');
+    await loadProfiles([peer]);
+    if (!profiles[peer]) return toast('Could not reach this user');
+    let stream; try { stream = await media(video); } catch { return toast(video ? 'Camera or microphone is blocked' : 'Microphone is blocked'); }
+    if (call){ stream.getTracks().forEach(t => t.stop()); return; }
+    call = { id: crypto.randomUUID(), peer, video: !!video, dir: 'out', local: stream, cands: [] };
+    mkPC(); showUI('out');
+    try {
+      const o = await call.pc.createOffer(); await call.pc.setLocalDescription(o);
+      await sig('offer', peer, call.id, { sdp: o.sdp, video: !!video });
+    } catch { return end('failed'); }
+    call.to = setTimeout(() => end('missed'), 45000);
+  }
+  async function accept(){
+    const c = call; if (!c || c.pc || c.dir !== 'in') return;
+    clearInterval(c.ring);
+    let stream; try { stream = await media(c.video); } catch { toast('Microphone is blocked'); return end('declined'); }
+    if (call !== c){ stream.getTracks().forEach(t => t.stop()); return; }
+    c.local = stream; mkPC(); showUI('live'); U('callUI').classList.remove('live'); U('cStat').textContent = 'Connecting…';
+    try {
+      await c.pc.setRemoteDescription({ type: 'offer', sdp: c.offer }); await flush();
+      const a = await c.pc.createAnswer(); await c.pc.setLocalDescription(a);
+      await sig('answer', c.peer, c.id, { sdp: a.sdp });
+    } catch { end('failed'); }
+  }
+  function end(reason, remote){
+    if (!call) return; const c = call; call = null;
+    [c.to, c.dt].forEach(clearTimeout); [c.tick, c.ring].forEach(clearInterval);
+    if (!remote) sig(reason === 'declined' ? 'decline' : 'end', c.peer, c.id, {});
+    try { c.pc && c.pc.close(); } catch {}
+    if (c.local) c.local.getTracks().forEach(t => t.stop());
+    U('rVid').srcObject = null; U('lVid').srcObject = null; U('callUI').hidden = true;
+    const dur = c.started ? Math.round((Date.now() - c.started) / 1000) : 0;
+    const status = dur ? 'completed' : reason === 'failed' ? 'failed' : c.dir === 'in' ? (reason === 'declined' ? 'declined' : 'missed')
+      : reason === 'busy' ? 'busy' : reason === 'declined' ? 'declined' : 'noanswer';
+    if (AC.log) AC.log({ peer: c.peer, dir: c.dir, video: c.video, t: Date.now(), status, dur });
+    const nm = dname(c.peer);
+    toast(dur ? 'Call ended' : status === 'missed' ? 'Missed call from ' + nm : status === 'busy' ? nm + ' is busy' :
+      status === 'declined' && c.dir === 'out' ? nm + ' declined' : status === 'failed' ? 'Call failed. Check your connection' :
+      status === 'noanswer' ? 'No answer' : 'Call ended');
+    setTimeout(() => sb.from('call_signals').delete().eq('call_id', c.id).then(() => {}), 3000);
+  }
+
+  async function onSig(r){
+    if (!me || r.recipient_id !== me.id) return;
+    await loadProfiles([r.sender_id], true);
+    if (!profiles[r.sender_id]) return;
+    let d; try {
+      const pt = nacl.box.open.after(unb64(r.ciphertext), unb64(r.nonce), ckey(r.sender_id));
+      if (!pt) return; d = JSON.parse(nacl.util.encodeUTF8(pt));
+    } catch { return; }
+    const k = r.kind, id = r.call_id;
+    if (k === 'offer'){
+      if (st(r.sender_id).blocked) return;
+      if (Date.now() - new Date(r.created_at) > 60000) return;
+      if (call){ if (call.id !== id) sig('decline', r.sender_id, id, { busy: 1 }); return; }
+      call = { id, peer: r.sender_id, video: !!d.video, dir: 'in', offer: d.sdp, cands: early[id] || [] }; delete early[id];
+      showUI('ring');
+      const ring = () => { playSeq(RINGS[st(call && call.peer).ringtone || prefs.ringtone]); if (navigator.vibrate) navigator.vibrate([300, 200, 300]); };
+      ring(); call.ring = setInterval(() => { if (call) ring(); }, 2400);
+      call.to = setTimeout(() => end('missed', true), 50000);
+      if (document.hidden && window.Notification && Notification.permission === 'granted'){ try { new Notification('Absol', { body: 'Incoming call from ' + dname(r.sender_id) }); } catch {} }
+    } else if (k === 'answer'){
+      if (call && call.id === id && call.pc && !call.pc.remoteDescription){
+        clearTimeout(call.to);
+        try { await call.pc.setRemoteDescription({ type: 'answer', sdp: d.sdp }); await flush(); U('cStat').textContent = 'Connecting…'; } catch { end('failed'); }
+      }
+    } else if (k === 'ice'){
+      if (call && call.id === id){ if (call.pc && call.pc.remoteDescription) call.pc.addIceCandidate(d.c).catch(() => {}); else call.cands.push(d.c); }
+      else (early[id] = early[id] || []).push(d.c);
+    } else if (k === 'end' || k === 'decline'){
+      if (call && call.id === id) end(k === 'decline' ? (d.busy ? 'busy' : 'declined') : 'remote', true);
+    }
+  }
+
+  AC.start = startCall; AC.accept = accept; AC.end = end;
+  AC.mute = () => { if (!call || !call.local) return false; const t = call.local.getAudioTracks(), on = t.some(x => x.enabled); t.forEach(x => x.enabled = !on); return on; };
+  AC.cam = () => { if (!call || !call.local) return false; const t = call.local.getVideoTracks(), on = t.some(x => x.enabled); t.forEach(x => x.enabled = !on); return on; };
+  AC.flip = async () => {
+    if (!call || !call.video || !call.pc) return;
+    call.face = call.face === 'environment' ? 'user' : 'environment';
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: call.face } }), nt = s.getVideoTracks()[0];
+      const sd = call.pc.getSenders().find(x => x.track && x.track.kind === 'video'); if (sd) await sd.replaceTrack(nt);
+      call.local.getVideoTracks().forEach(t => { t.stop(); call.local.removeTrack(t); });
+      call.local.addTrack(nt); U('lVid').srcObject = call.local;
+    } catch { toast('Could not switch camera'); }
+  };
+  AC.subscribe = () => {
+    if (callCh) sb.removeChannel(callCh);
+    callCh = sb.channel('calls-' + me.id)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'call_signals', filter: 'recipient_id=eq.' + me.id }, p => onSig(p.new))
+      .subscribe();
+  };
+  AC.unsubscribe = () => { if (call) end('hangup'); if (callCh){ sb.removeChannel(callCh); callCh = null; } };
+  window.addEventListener('pagehide', () => { if (call) end('hangup'); });
+})();
+  </script>
+  <script>
+(function(){
+  const AC = window.AbsolCall, U = id => document.getElementById(id);
+
+  /* extra icons */
+  Object.assign(ICONS, {
+    mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>',
+    'mic-off': '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3M3 3l18 18"/>',
+    'video-off': '<rect x="3" y="6" width="13" height="12" rx="3.5"/><path d="M16 10.5l5-3v9l-5-3M3 3l18 18"/>',
+    flip: '<path d="M4 12a8 8 0 0113.5-5.8L20 8M20 4v4h-4M20 12a8 8 0 01-13.5 5.8L4 16M4 20v-4h4"/>'
+  });
+  const sprite = document.querySelector('body > svg[aria-hidden]');
+  if (sprite) ['mic','mic-off','video-off','flip'].forEach(k => sprite.insertAdjacentHTML('beforeend', `<symbol id="i-${k}" viewBox="0 0 24 24">${ICONS[k]}</symbol>`));
+
+  /* call screen buttons */
+  U('cDec').textContent = '{{phone}}'; U('cAcc').textContent = '{{phone}}';
+  U('cMute').textContent = '{{mic}}'; U('cCam').textContent = '{{video}}';
+  U('cFlip').textContent = '{{flip}}'; U('cEnd').textContent = '{{phone}}';
+  U('cDec').onclick = () => AC.end('declined');
+  U('cAcc').onclick = () => AC.accept();
+  U('cEnd').onclick = () => AC.end('hangup');
+  U('cMute').onclick = e => { const muted = AC.mute(); e.currentTarget.classList.toggle('on', muted); e.currentTarget.textContent = muted ? '{{mic-off}}' : '{{mic}}'; };
+  U('cCam').onclick = e => { const off = AC.cam(); e.currentTarget.classList.toggle('on', off); e.currentTarget.textContent = off ? '{{video-off}}' : '{{video}}'; };
+  U('cFlip').onclick = () => AC.flip();
+
+  /* phone and video buttons in the chat header (one-to-one chats only) */
+  const hc = el('button', { className: 'iconbtn', id: 'hCall', textContent: '{{phone}}', onclick: () => AC.start(current, false) });
+  const hv = el('button', { className: 'iconbtn', id: 'hVid', textContent: '{{video}}', onclick: () => AC.start(current, true) });
+  $('menuBtn').before(hc, hv);
+  const _cc = chatChrome, _gc = groupChrome;
+  chatChrome = function(){ _cc(); hc.hidden = hv.hidden = false; };
+  groupChrome = function(){ _gc(); hc.hidden = hv.hidden = true; };
+
+  /* three-dot menu "Call" and contact info buttons */
+  const _mc = $('menu').onclick;
+  $('menu').onclick = e => {
+    const b = e.target.closest('button');
+    if (b && b.dataset.a === 'call' && !curGroup){ $('menuWrap').hidden = true; AC.start(current, false); return; }
+    return _mc(e);
+  };
+  $('detCall').onclick = () => AC.start(current, false);
+  $('detVideo').onclick = () => AC.start(current, true);
+
+  /* Calls tab with history (stored on this device) */
+  $('cardCalls').innerHTML = '<div id="callsList" style="flex:1;overflow-y:auto;min-height:0"></div>';
+  const key = () => 'absol-calls:' + me.id;
+  const dur = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  AC.render = function(){
+    const box = U('callsList'); if (!box || !me) return; box.textContent = '';
+    let a = []; try { a = JSON.parse(localStorage.getItem(key()) || '[]'); } catch {}
+    if (!a.length){ box.appendChild(el('div', { className: 'empty', textContent: 'No calls yet. Open a chat and tap the phone icon.' })); return; }
+    a.forEach(e => {
+      const label = { completed: dur(e.dur || 0), missed: 'Missed', declined: 'Declined', noanswer: 'No answer', busy: 'Busy', failed: 'Failed' }[e.status] || '';
+      const sub = el('span', { className: e.status === 'missed' ? 'miss' : '', textContent: (e.dir === 'out' ? 'Outgoing' : 'Incoming') + (e.video ? ' video' : ' voice') + ' · ' + label + ' · ' + fmtTime(new Date(e.t).toISOString()) });
+      const btn = el('button', { className: 'iconbtn', textContent: e.video ? '{{video}}' : '{{phone}}' });
+      btn.onclick = ev => { ev.stopPropagation(); AC.start(e.peer, e.video); };
+      const row = el('div', { className: 'convo callrow' }, avatar((profiles[e.peer] || {}).username), el('div', { className: 'tx' }, el('b', { textContent: dname(e.peer) }), sub), btn);
+      row.onclick = () => openChat(e.peer);
+      box.appendChild(row);
+    });
+  };
+  AC.log = function(e){
+    try { const a = JSON.parse(localStorage.getItem(key()) || '[]'); a.unshift(e); localStorage.setItem(key(), JSON.stringify(a.slice(0, 100))); } catch {}
+    AC.render();
+  };
+  let first = false; const _rl = renderList;
+  renderList = function(){ _rl(); if (!first && me){ first = true; AC.render(); } };
+
+  /* start listening after login, stop on logout */
+  const _sub = subscribe; subscribe = function(){ _sub(); AC.subscribe(); };
+  const _lo = logout;
+  logout = async function(){ AC.unsubscribe(); first = false; return _lo(); };
+  $('logoutBtn').onclick = logout;
+})();
+  </script>
 </body>
 </html>
