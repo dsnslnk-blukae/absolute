@@ -2145,5 +2145,65 @@ start().catch(e => { console.error(e); show('auth'); $('err').textContent = frie
   start().catch(e => { console.error(e); show('auth'); $('err').textContent = friendly(e); });
 })();
 </script>
+  <style>
+/* swipe: slide only, no scale/fade */
+#cardChats,#cardCalls{transform:none!important;opacity:1!important;transition:none!important;will-change:auto!important;contain:layout paint}
+#viewport{touch-action:pan-y}
+#convos,#msgs,.results,.sbody,.dbody{overscroll-behavior:contain}
+/* cheaper rendering for long lists */
+.convo,.b.me,.b.them{corner-shape:round!important}
+.chead{backdrop-filter:none!important;background:var(--surface)!important}
+  </style>
+  <script>
+(function(){
+  /* shared-key cache: one heavy computation per contact instead of per message */
+  const shk = {};
+  const shared = pub => { const k = me.id + pub; return shk[k] || (shk[k] = nacl.box.before(unb64(pub), me.sk)); };
+  decrypt = function(m){
+    if (m._t != null) return m._t;
+    try {
+      const other = profiles[otherId(m)];
+      const pt = nacl.box.open.after(unb64(m.ciphertext), unb64(m.nonce), shared(other.public_key));
+      if (!pt) return null;
+      return (m._t = nacl.util.encodeUTF8(pt));
+    } catch { return null; }
+  };
+
+  /* profiles load fast; photos arrive in the background */
+  const _photos = loadPhotos, stamp = {}; let pq = new Set(), pt = 0;
+  function queuePhotos(ids){
+    ids.forEach(id => pq.add(id)); clearTimeout(pt);
+    pt = setTimeout(async () => {
+      const ids2 = [...pq]; pq = new Set();
+      await _photos(ids2);
+      renderList();
+      if (!$('chat').hidden){ if (curGroup) groupChrome(); else if (current) chatChrome(); }
+    }, 200);
+  }
+  loadProfiles = async function(ids, force){
+    const now = Date.now();
+    const need = [...new Set(ids || [])].filter(id => {
+      if (!id) return false;
+      if (force){ if (stamp[id] && now - stamp[id] < 60000) return false; stamp[id] = now; return true; }
+      return !profiles[id];
+    });
+    if (!need.length) return;
+    const { data } = await sb.from('profiles').select('*').in('id', need);
+    (data || []).forEach(p => profiles[p.id] = p);
+    queuePhotos(need);
+  };
+})();
+             </script>
+  <script>
+(function(){
+  /* the original resize handler snapped the toggle back to Chats; replace it */
+  let rf = 0;
+  window.addEventListener('resize', e => {
+    e.stopImmediatePropagation();
+    if (rf) return;
+    rf = requestAnimationFrame(() => { rf = 0; if (window.layoutHome) layoutHome(); });
+  }, true);
+})();
+  </script>
 </body>
 </html>
