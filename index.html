@@ -1872,5 +1872,278 @@ start().catch(e => { console.error(e); show('auth'); $('err').textContent = frie
   };
 })();
 </script>
+  <!-- ABSOL ALL-IN-ONE PATCH (replaces every earlier patch)
+     STEP 1: At the very bottom of your script, DELETE this one last line (the original starter):
+             start().catch(e => { console.error(e); show('auth'); $('err').textContent = friendly(e); });
+     STEP 2: Paste this whole block at the very bottom, after the last </script> and before </body>.
+     Contains: slimmer Chats/Calls toggle, collapsible members box, smoother swipe, faster startup,
+     newest-500 loading with "Loading messages…" for older ones, and old chats kept in the list.
+     Blur, shadows and the rest of the look are untouched. -->
+<style>
+/* slimmer Chats/Calls toggle (shorter, same length) */
+.switch{padding:3px;margin:4px 12px 8px;border-radius:26px}
+.switch .ind{top:3px;bottom:3px;left:3px;width:calc(50% - 3px);border-radius:22px}
+.switch button{padding:7px 10px;font-size:14px;border-radius:22px}
+.switch button .i{width:16px;height:16px;margin-inline-end:6px}
+/* members box */
+.mbox{overflow:hidden}
+.mhead{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer}
+.mstack{display:flex;align-items:center}
+.mstack .av{width:30px;height:30px;font-size:13px;margin-left:-10px;box-shadow:0 0 0 2px var(--surface)}
+.mstack .av:first-child{margin-left:0}
+.mcount{flex:1;font-weight:700}
+.marrow{color:var(--muted);display:flex}
+.mlist{max-height:280px;overflow-y:auto;border-top:1px solid var(--border);-webkit-overflow-scrolling:touch}
+.mlist>.srow:last-child{border-bottom:0}
+/* smoother swipe (GPU layers, no visual change) */
+#track,#ind{will-change:transform}
+.card{will-change:transform,opacity}
+#viewport.moving .card,#viewport.moving .convo{corner-shape:round}
+/* loading screen */
+#boot{position:fixed;inset:0;z-index:99;display:grid;place-items:center;background:var(--bg);color:var(--accent);font:800 26px "Plus Jakarta Sans",system-ui,sans-serif}
+</style>
+<script>
+(function(){
+  /* 1) Members box in group info */
+  let memOpen = false;
+  const _ogi = openGroupInfo;
+  openGroupInfo = function(gid){
+    _ogi(gid);
+    const body = $('gibody');
+    const sec = [...body.querySelectorAll('.sec')].find(x => x.textContent.trim() === 'Members');
+    const card = sec && sec.nextElementSibling;
+    if (!card || !card.classList.contains('scard')) return;
+    const rows = [...card.children], mem = gmembers[gid] || [];
+    const list = el('div', { className: 'mlist' }, ...rows);
+    list.hidden = !memOpen;
+    const arrow = el('span', { className: 'marrow', textContent: memOpen ? '{{chev-up}}' : '{{chev-down}}' });
+    const head = el('div', { className: 'mhead', onclick: () => {
+      memOpen = !memOpen; list.hidden = !memOpen;
+      arrow.textContent = memOpen ? '{{chev-up}}' : '{{chev-down}}';
+    } },
+      el('div', { className: 'mstack' }, ...mem.slice(0, 5).map(m => avatar((profiles[m.user_id] || {}).username, 'sm'))),
+      el('span', { className: 'mcount', textContent: rows.length + (rows.length === 1 ? ' member' : ' members') }),
+      arrow);
+    card.classList.add('mbox');
+    card.replaceChildren(head, list);
+  };
+
+  /* 2) Icon scanner: skip message bubbles that cannot contain icon tags */
+  const _ic = iconize;
+  iconize = function(root){
+    if (root && root.nodeType === 1 && root.closest && root.closest('#msgs') && !root.textContent.includes('{{')) return;
+    return _ic(root);
+  };
+
+  /* 3) Profile reloads: max one forced refresh per person per minute */
+  const _lp = loadProfiles, stamp = {};
+  loadProfiles = function(ids, force){
+    if (!force) return _lp(ids);
+    const now = Date.now(), fresh = [], rest = [];
+    [...new Set(ids || [])].forEach(id => {
+      if (id && (!stamp[id] || now - stamp[id] > 60000)){ stamp[id] = now; fresh.push(id); } else rest.push(id);
+    });
+    return Promise.all([fresh.length ? _lp(fresh, true) : 0, rest.length ? _lp(rest) : 0]);
+  };
+
+  /* 4) Group refresh without re-downloading all group messages */
+  refreshGroups = function(){
+    clearTimeout(gTimer);
+    gTimer = setTimeout(async () => {
+      await loadGroups(false);
+      if (curGroup && !groups[curGroup]){ toast('You are no longer in this group'); goList(); return; }
+      renderList();
+      if (curGroup){ if (!$('ginfo').hidden) openGroupInfo(curGroup); else { groupChrome(); renderMsgs(); } }
+    }, 400);
+  };
+
+  /* 5) Loading screen */
+  let boot = null;
+  if (![...document.querySelectorAll('#app>section')].some(s => !s.hidden)){
+    boot = document.createElement('div'); boot.id = 'boot'; boot.textContent = 'Absol'; document.body.appendChild(boot);
+    const _show = show;
+    show = function(){ _show.apply(this, arguments); if (boot){ boot.remove(); boot = null; } };
+    setTimeout(() => { if (boot){ boot.remove(); boot = null; } }, 8000);
+  }
+
+  /* 6) Smoother Chats/Calls swipe */
+  (function(){
+    const vp = $('viewport'), track = $('track'), c0 = $('cardChats'), c1 = $('cardCalls'), ind = $('ind');
+    const btns = [...document.querySelectorAll('#switch button')], EASE = 'cubic-bezier(.22,1,.36,1)';
+    let idx = 0, w = 0, sx = 0, sy = 0, dx = 0, drag = false, lock = null, raf = 0, want = 0, mt;
+    const measure = () => { w = Math.max(vp.clientWidth - 20, 0); };
+    const mv = () => { vp.classList.add('moving'); clearTimeout(mt); mt = setTimeout(() => vp.classList.remove('moving'), 500); };
+    function paint(p, anim){
+      if (w <= 0) measure();
+      const t = anim ? `transform .38s ${EASE}, opacity .38s` : 'none';
+      track.style.transition = anim ? `transform .38s ${EASE}` : 'none';
+      track.style.transform = `translate3d(${-p * (w + 12)}px,0,0)`;
+      c0.style.transition = t; c0.style.transform = `scale(${1 - .06 * p})`; c0.style.opacity = 1 - .45 * p;
+      c1.style.transition = t; c1.style.transform = `scale(${.94 + .06 * p})`; c1.style.opacity = .55 + .45 * p;
+      ind.style.transition = anim ? `transform .38s ${EASE}` : 'none';
+      ind.style.transform = `translate3d(${p * 100}%,0,0)`;
+      const r = Math.round(p); btns.forEach((b, i) => b.classList.toggle('on', r === i));
+    }
+    window.layoutHome = () => { measure(); paint(idx, false); };
+    btns.forEach((b, i) => { b.onclick = () => { mv(); idx = i; paint(idx, true); }; });
+    const opt = { capture: true, passive: true };
+    vp.addEventListener('touchstart', e => {
+      e.stopPropagation(); const t = e.touches[0];
+      sx = t.clientX; sy = t.clientY; dx = 0; lock = null; drag = true; measure();
+    }, opt);
+    vp.addEventListener('touchmove', e => {
+      e.stopPropagation(); if (!drag) return;
+      const t = e.touches[0], ax = t.clientX - sx, ay = t.clientY - sy;
+      if (lock === null && (Math.abs(ax) > 8 || Math.abs(ay) > 8)) lock = Math.abs(ax) > Math.abs(ay) ? 'x' : 'y';
+      if (lock !== 'x') return;
+      mv();
+      dx = ax; want = Math.max(-.12, Math.min(1.12, idx - dx / w));
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; paint(want, false); });
+    }, opt);
+    const end = e => {
+      e.stopPropagation(); if (!drag) return; drag = false;
+      if (raf){ cancelAnimationFrame(raf); raf = 0; }
+      if (lock !== 'x') return;
+      mv();
+      if (dx < -w * .2) idx = 1; else if (dx > w * .2) idx = 0;
+      paint(idx, true);
+    };
+    vp.addEventListener('touchend', end, opt);
+    vp.addEventListener('touchcancel', end, opt);
+    window.addEventListener('resize', () => { measure(); paint(idx, false); });
+  })();
+
+  /* 7) Newest 500 messages at login (+ latest message of every chat/group so none disappears),
+        older messages load when you scroll up */
+  const _from = sb.from.bind(sb), CAP = 500, PAGE = 100, capped = {}, done = {};
+  const byTime = (a, b) => new Date(a.created_at) - new Date(b.created_at);
+  sb.from = function(t){
+    const qb = _from(t);
+    if (t !== 'messages' && t !== 'group_messages') return qb;
+    const sel = qb.select.bind(qb);
+    qb.select = function(...a){
+      const fb = sel(...a);
+      if (a[0] !== '*') return fb;
+      const o = fb.order.bind(fb), l = fb.limit.bind(fb), th = fb.then.bind(fb);
+      let flipped = false;
+      fb.order = (c, op) => { if (c === 'created_at' && op && op.ascending){ flipped = true; op = { ...op, ascending: false }; } return o(c, op); };
+      fb.limit = n => l(Math.min(n, CAP));
+      fb.then = (res, rej) => th(async r => {
+        if (flipped && r && r.data){
+          capped[t] = r.data.length >= CAP; r.data = r.data.slice().reverse();
+          if (capped[t]){
+            try {
+              const { data, error } = await sb.rpc(t === 'messages' ? 'latest_per_chat' : 'latest_per_group');
+              if (!error && data){
+                const have = new Set(r.data.map(x => x.id));
+                data.forEach(x => { if (!have.has(x.id)) r.data.push(x); });
+                r.data.sort(byTime);
+              }
+            } catch (e) { console.warn('chat preview merge failed', e); }
+          }
+        }
+        return r;
+      }).then(res, rej);
+      return fb;
+    };
+    return qb;
+  };
+
+  const box = $('msgs'); let busy = false;
+  const fits = () => box.scrollHeight <= box.clientHeight + 20;
+  async function loadOlder(){
+    const peer = current, gid = curGroup;
+    if (busy || !me || (!peer && !gid)) return;
+    const key = me.id + (gid ? 'g' + gid : 'u' + peer);
+    if (done[key] || !capped[gid ? 'group_messages' : 'messages']) return;
+    busy = true;
+    const prevH = box.scrollHeight, prevTop = box.scrollTop;
+    box.style.overflowAnchor = 'none';
+    box.prepend(el('div', { className: 'empty', textContent: 'Loading messages…' }));
+    try {
+      let first = null;
+      (gid ? gmsgs : msgs).forEach(m => {
+        if ((gid ? m.group_id === gid : otherId(m) === peer) && !m.pending && (!first || byTime(m, first) < 0)) first = m;
+      });
+      const before = first ? first.created_at : new Date().toISOString();
+      let q;
+      if (gid) q = _from('group_messages').select('*').eq('group_id', gid);
+      else q = _from('messages').select('*').or(`and(sender_id.eq.${me.id},recipient_id.eq.${peer}),and(sender_id.eq.${peer},recipient_id.eq.${me.id})`);
+      const { data, error } = await q.lt('created_at', before).order('created_at', { ascending: false }).limit(PAGE);
+      if (error) throw error;
+      const rows = data || [];
+      if (rows.length < PAGE) done[key] = true;
+      if (gid){
+        await loadProfiles(rows.map(r => r.sender_id));
+        const have = new Set(gmsgs.map(x => x.id)); rows.forEach(r => { if (!have.has(r.id)) gmsgs.push(r); }); gmsgs.sort(byTime);
+      } else {
+        const have = new Set(msgs.map(x => x.id)); rows.forEach(r => { if (!have.has(r.id)) msgs.push(r); }); msgs.sort(byTime);
+      }
+    } catch (e){
+      done[key] = true; setTimeout(() => { delete done[key]; }, 10000); toast('Could not load older messages');
+    } finally {
+      busy = false;
+      if (current === peer && curGroup === gid){
+        renderMsgs(); box.scrollTop = box.scrollHeight - prevH + prevTop;
+        if (!done[key] && fits()) setTimeout(loadOlder, 0);
+      }
+      box.style.overflowAnchor = '';
+    }
+  }
+  box.addEventListener('scroll', () => { if (box.scrollTop < 80) loadOlder(); }, { passive: true });
+  const _oc = openChat, _og = openGroup;
+  openChat = async function(id){ await _oc(id); setTimeout(() => { if (fits()) loadOlder(); }, 300); };
+  openGroup = function(gid){ _og(gid); setTimeout(() => { if (fits()) loadOlder(); }, 300); };
+
+  /* 8) Fast startup: independent requests run at the same time */
+  start = async function(){
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return show('auth');
+    const uid = session.user.id;
+    const msgP = Promise.resolve(sb.from('messages').select('*').order('created_at', { ascending: true }).limit(2000));
+    const setP = loadSettings();
+    let { data: prof } = await sb.from('profiles').select('*').eq('id', uid).maybeSingle();
+    let skStr = localStorage.getItem('sk:' + uid);
+    let fresh = false;
+    if (prof && !skStr){
+      const res = await askRestore(prof);
+      if (!res){ await sb.auth.signOut(); return show('auth'); }
+      if (res.sk){ skStr = b64(res.sk); localStorage.setItem('sk:' + uid, skStr); } else fresh = true;
+    }
+    if (!prof || fresh){
+      const uname = session.user.email.split('@')[0];
+      const kp = nacl.box.keyPair();
+      const pub = b64(kp.publicKey);
+      const q = prof
+        ? sb.from('profiles').update({ public_key: pub, key_backup: null }).eq('id', uid)
+        : sb.from('profiles').insert({ id: uid, username: uname, public_key: pub });
+      const { error } = await q;
+      if (error) throw error;
+      skStr = b64(kp.secretKey);
+      localStorage.setItem('sk:' + uid, skStr);
+      prof = { ...(prof || { id: uid, username: uname }), public_key: pub, key_backup: null };
+    }
+    me = { id: uid, username: prof.username, pk: prof.public_key, sk: unb64(skStr), backedUp: !!prof.key_backup };
+    profiles[uid] = prof;
+    me.email = session.user.email;
+    me.showOnline = prof.show_online !== false;
+    $('banner').hidden = me.backedUp;
+    const prefP = loadPrefs(), photoP = loadPhotos([uid]), grpP = loadGroups(true);
+    const { data: rows, error } = await msgP;
+    if (error) throw error;
+    msgs = rows;
+    await Promise.all([setP, prefP, photoP]);
+    await loadProfiles(rows.flatMap(r => [r.sender_id, r.recipient_id]));
+    $('avatarBtn').replaceChildren(avatar(me.username));
+    subscribe();
+    startPresence();
+    renderList();
+    show('list');
+    await grpP;
+    renderList();
+  };
+  start().catch(e => { console.error(e); show('auth'); $('err').textContent = friendly(e); });
+})();
+</script>
 </body>
 </html>
