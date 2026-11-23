@@ -2236,21 +2236,32 @@ start().catch(e => { console.error(e); show('auth'); $('err').textContent = frie
   </div>
 </div>
   <script>
+/* Optional, put BEFORE this script. Needed for calls over mobile data / strict NATs:
+   window.ABSOL_TURN = [{ urls:'turn:YOUR_HOST:443', username:'USER', credential:'PASS' }]; */
 (function(){
   const AC = window.AbsolCall = {};
-  const TURN = []; /* optional relay later, e.g. {urls:'turn:host:443',username:'u',credential:'p'} */
+  const TURN = window.ABSOL_TURN || [];
   const ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }, ...TURN] };
   const U = id => document.getElementById(id);
-  let call = null, callCh = null; const early = {}, kc = {};
+  const log = (...a) => console.log('[call]', ...a);
+  let call = null, callCh = null, subId = null, skew = 0, polling = false;
+  const early = {}, kc = {}, seen = new Set();
+  let queue = Promise.resolve();
+  const now = () => Date.now() + skew;
   const ckey = id => { const pub = profiles[id].public_key, k = me.id + pub; return kc[k] || (kc[k] = nacl.box.before(unb64(pub), me.sk)); };
+
+  /* server clock offset (so a wrong phone clock never drops calls) */
+  async function syncClock(){
+    try { const r = await fetch(location.href, { method: 'HEAD', cache: 'no-store' }); const d = r.headers.get('date'); if (d) skew = new Date(d).getTime() - Date.now(); } catch {}
+  }
 
   async function sig(kind, peer, id, data){
     try {
       const n = nacl.randomBytes(nacl.box.nonceLength);
       const ct = nacl.box.after(nacl.util.decodeUTF8(JSON.stringify(data || {})), n, ckey(peer));
       const { error } = await sb.from('call_signals').insert({ call_id: id, recipient_id: peer, kind, ciphertext: b64(ct), nonce: b64(n) });
-      if (error) console.warn('signal', error.message);
-    } catch (e) { console.warn(e); }
+      if (error) console.warn('[call] signal insert failed', kind, error.message);
+    } catch (e) { console.warn('[call] signal error', kind, e); }
   }
   const media = v => navigator.mediaDevices.getUserMedia({
     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -2272,7 +2283,7 @@ start().catch(e => { console.error(e); show('auth'); $('err').textContent = frie
     pc.onicecandidate = e => { if (e.candidate && call && call.pc === pc) sig('ice', call.peer, call.id, { c: e.candidate.toJSON() }); };
     pc.ontrack = e => { U('rVid').srcObject = e.streams[0]; U('rVid').play().catch(() => {}); };
     pc.onconnectionstatechange = () => {
-      const s = pc.connectionState;
+      const s = pc.connectionState; log('pc', s);
       if (s === 'connected') connected();
       else if (s === 'failed') end('failed');
       else if (s === 'disconnected' && call){ clearTimeout(call.dt); call.dt = setTimeout(() => { if (call && call.pc === pc && pc.connectionState !== 'connected') end('failed'); }, 8000); }
@@ -2289,14 +2300,16 @@ start().catch(e => { console.error(e); show('auth'); $('err').textContent = frie
     const c = call; if (!c || !c.pc || !c.pc.remoteDescription) return;
     while (c.cands.length) { try { await c.pc.addIceCandidate(c.cands.shift()); } catch {} }
   }
+  function askNotif(){ try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission().catch(() => {}); } catch {} }
 
   async function startCall(peer, video){
     if (!me || !peer) return;
     if (call) return toast('You are already in a call');
     if (st(peer).blocked) return toast('Unblock this user to call');
     if (!navigator.mediaDevices || !window.RTCPeerConnection) return toast('Calls are not supported in this browser');
+    askNotif();
     await loadProfiles([peer]);
-    if (!profiles[peer]) return toast('Could not reach this user');
+    if (!profiles[peer] || !profiles[peer].public_key) return toast('Could not reach this user');
     let stream; try { stream = await media(video); } catch { return toast(video ? 'Camera or microphone is blocked' : 'Microphone is blocked'); }
     if (call){ stream.getTracks().forEach(t => t.stop()); return; }
     call = { id: crypto.randomUUID(), peer, video: !!video, dir: 'out', local: stream, cands: [] };
@@ -2332,27 +2345,40 @@ start().catch(e => { console.error(e); show('auth'); $('err').textContent = frie
     if (AC.log) AC.log({ peer: c.peer, dir: c.dir, video: c.video, t: Date.now(), status, dur });
     const nm = dname(c.peer);
     toast(dur ? 'Call ended' : status === 'missed' ? 'Missed call from ' + nm : status === 'busy' ? nm + ' is busy' :
-      status === 'declined' && c.dir === 'out' ? nm + ' declined' : status === 'failed' ? 'Call failed. Check your connection' :
+      status === 'declined' && c.dir === 'out' ? nm + ' declined' : status === 'failed' ? 'Call failed. Check your connection (a TURN server may be needed)' :
       status === 'noanswer' ? 'No answer' : 'Call ended');
     setTimeout(() => sb.from('call_signals').delete().eq('call_id', c.id).then(() => {}), 3000);
   }
 
+  /* one signal at a time, in order, never twice */
+  function enqueue(r){
+    if (!r || seen.has(r.id)) return;
+    seen.add(r.id); if (seen.size > 500) seen.delete(seen.values().next().value);
+    queue = queue.then(() => onSig(r)).catch(e => console.warn('[call] onSig', e));
+  }
+
   async function onSig(r){
     if (!me || r.recipient_id !== me.id) return;
+    log('signal', r.kind, r.call_id);
     await loadProfiles([r.sender_id], true);
-    if (!profiles[r.sender_id]) return;
+    if (!profiles[r.sender_id]){ console.warn('[call] unknown sender', r.sender_id); return; }
     let d; try {
       const pt = nacl.box.open.after(unb64(r.ciphertext), unb64(r.nonce), ckey(r.sender_id));
-      if (!pt) return; d = JSON.parse(nacl.util.encodeUTF8(pt));
-    } catch { return; }
+      if (!pt) throw new Error('bad box');
+      d = JSON.parse(nacl.util.encodeUTF8(pt));
+    } catch (e) {
+      console.warn('[call] decrypt failed', r.kind, e);
+      if (r.kind === 'offer') toast('Incoming call could not be decrypted (key mismatch?)');
+      return;
+    }
     const k = r.kind, id = r.call_id;
     if (k === 'offer'){
       if (st(r.sender_id).blocked) return;
-      if (Date.now() - new Date(r.created_at) > 60000) return;
+      if (now() - new Date(r.created_at) > 90000) return;
       if (call){ if (call.id !== id) sig('decline', r.sender_id, id, { busy: 1 }); return; }
       call = { id, peer: r.sender_id, video: !!d.video, dir: 'in', offer: d.sdp, cands: early[id] || [] }; delete early[id];
       showUI('ring');
-      const ring = () => { playSeq(RINGS[st(call && call.peer).ringtone || prefs.ringtone]); if (navigator.vibrate) navigator.vibrate([300, 200, 300]); };
+      const ring = () => { try { playSeq(RINGS[st(call && call.peer).ringtone || prefs.ringtone]); } catch {} if (navigator.vibrate) navigator.vibrate([300, 200, 300]); };
       ring(); call.ring = setInterval(() => { if (call) ring(); }, 2400);
       call.to = setTimeout(() => end('missed', true), 50000);
       if (document.hidden && window.Notification && Notification.permission === 'granted'){ try { new Notification('Absol', { body: 'Incoming call from ' + dname(r.sender_id) }); } catch {} }
@@ -2369,6 +2395,18 @@ start().catch(e => { console.error(e); show('auth'); $('err').textContent = frie
     }
   }
 
+  /* fallback: fetch recent signals, works even if Realtime is down or the tab was asleep */
+  async function poll(){
+    if (!me || polling) return; polling = true;
+    try {
+      const since = new Date(now() - 120000).toISOString();
+      const { data, error } = await sb.from('call_signals').select('*').eq('recipient_id', me.id).gt('created_at', since).order('id');
+      if (error){ console.warn('[call] poll', error.message); return; }
+      const ended = new Set((data || []).filter(r => r.kind === 'end' || r.kind === 'decline').map(r => r.call_id));
+      (data || []).forEach(r => { if (ended.has(r.call_id) && !(call && call.id === r.call_id)) return; enqueue(r); });
+    } finally { polling = false; }
+  }
+
   AC.start = startCall; AC.accept = accept; AC.end = end;
   AC.mute = () => { if (!call || !call.local) return false; const t = call.local.getAudioTracks(), on = t.some(x => x.enabled); t.forEach(x => x.enabled = !on); return on; };
   AC.cam = () => { if (!call || !call.local) return false; const t = call.local.getVideoTracks(), on = t.some(x => x.enabled); t.forEach(x => x.enabled = !on); return on; };
@@ -2383,16 +2421,29 @@ start().catch(e => { console.error(e); show('auth'); $('err').textContent = frie
     } catch { toast('Could not switch camera'); }
   };
   AC.subscribe = () => {
+    if (!me) return;
+    if (callCh && subId === me.id) return;               /* already listening */
     if (callCh) sb.removeChannel(callCh);
+    subId = me.id; syncClock();
     callCh = sb.channel('calls-' + me.id)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'call_signals', filter: 'recipient_id=eq.' + me.id }, p => onSig(p.new))
-      .subscribe();
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'call_signals', filter: 'recipient_id=eq.' + me.id }, p => enqueue(p.new))
+      .subscribe((s, err) => {
+        log('realtime', s, err || '');
+        if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') setTimeout(() => { subId = null; AC.subscribe(); }, 3000);
+      });
+    poll();
   };
-  AC.unsubscribe = () => { if (call) end('hangup'); if (callCh){ sb.removeChannel(callCh); callCh = null; } };
+  AC.unsubscribe = () => { if (call) end('hangup'); if (callCh){ sb.removeChannel(callCh); callCh = null; } subId = null; };
+
+  /* self-starting: no dependency on the main app calling subscribe() */
+  setInterval(() => { if (me && (!callCh || subId !== me.id)) AC.subscribe(); else if (!me && callCh) AC.unsubscribe(); }, 1500);
+  setInterval(() => { if (me && !document.hidden) poll(); }, 4000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && me){ subId = null; AC.subscribe(); } });
+  window.addEventListener('online', () => { if (me){ subId = null; AC.subscribe(); } });
   window.addEventListener('pagehide', () => { if (call) end('hangup'); });
 })();
-  </script>
-  <script>
+</script>
+
 (function(){
   const AC = window.AbsolCall, U = id => document.getElementById(id);
 
