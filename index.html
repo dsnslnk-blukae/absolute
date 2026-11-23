@@ -1826,5 +1826,51 @@ $('msgInput').addEventListener('keydown', e => { if (e.key === 'Enter') send(); 
 applyTheme(localStorage.getItem('absol-theme') || 'lavender');
 start().catch(e => { console.error(e); show('auth'); $('err').textContent = friendly(e); });
 </script>
+  <!-- ABSOL PATCH (HTML version): paste this block at the very bottom of your
+     HTML file, right AFTER the last </script> and BEFORE </body>. -->
+<script>
+(function(){
+  /* 1) Styles: slimmer Chats/Calls toggle + collapsible members box */
+  const css = `
+.switch{padding:3px;margin:4px 12px 8px;border-radius:26px}
+.switch .ind{top:3px;bottom:3px;left:3px;width:calc(50% - 3px);border-radius:22px}
+.switch button{padding:7px 10px;font-size:14px;border-radius:22px}
+.switch button .i{width:16px;height:16px;margin-inline-end:6px}
+.mbox{overflow:hidden}
+.mhead{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer}
+.mstack{display:flex;align-items:center}
+.mstack .av{width:30px;height:30px;font-size:13px;margin-left:-10px;box-shadow:0 0 0 2px var(--surface)}
+.mstack .av:first-child{margin-left:0}
+.mcount{flex:1;font-weight:700}
+.marrow{color:var(--muted);display:flex}
+.mlist{max-height:280px;overflow-y:auto;border-top:1px solid var(--border);-webkit-overflow-scrolling:touch}
+.mlist>.srow:last-child{border-bottom:0}`;
+  const s = document.createElement('style'); s.textContent = css; document.head.appendChild(s);
+
+  /* 2) Group info: wrap the members list in a small tap-to-open box */
+  let open = false;
+  const orig = openGroupInfo;
+  openGroupInfo = function(gid){
+    orig(gid);
+    const body = $('gibody');
+    const sec = [...body.querySelectorAll('.sec')].find(x => x.textContent.trim() === 'Members');
+    const card = sec && sec.nextElementSibling;
+    if (!card || !card.classList.contains('scard')) return;
+    const rows = [...card.children], mem = gmembers[gid] || [];
+    const list = el('div', { className: 'mlist' }, ...rows);
+    list.hidden = !open;
+    const arrow = el('span', { className: 'marrow', textContent: open ? '{{chev-up}}' : '{{chev-down}}' });
+    const head = el('div', { className: 'mhead', onclick: () => {
+      open = !open; list.hidden = !open;
+      arrow.textContent = open ? '{{chev-up}}' : '{{chev-down}}';
+    } },
+      el('div', { className: 'mstack' }, ...mem.slice(0, 5).map(m => avatar((profiles[m.user_id] || {}).username, 'sm'))),
+      el('span', { className: 'mcount', textContent: rows.length + (rows.length === 1 ? ' member' : ' members') }),
+      arrow);
+    card.classList.add('mbox');
+    card.replaceChildren(head, list);
+  };
+})();
+</script>
 </body>
 </html>
