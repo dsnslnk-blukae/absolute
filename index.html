@@ -1872,5 +1872,40 @@ start().catch(e => { console.error(e); show('auth'); $('err').textContent = frie
   };
 })();
 </script>
+  <!-- ABSOL CHAT-LIST PATCH
+     Run the SQL in Supabase FIRST. Then paste this at the very bottom of your HTML,
+     AFTER the speed patch and before </body>. -->
+<script>
+(function(){
+  /* After the newest-500 load, also fetch each chat's latest message so no chat disappears from the list */
+  const _f = sb.from.bind(sb);
+  const byTime = (a, b) => new Date(a.created_at) - new Date(b.created_at);
+  sb.from = function(t){
+    const qb = _f(t);
+    if (t !== 'messages' && t !== 'group_messages') return qb;
+    const sel = qb.select.bind(qb);
+    qb.select = function(...a){
+      const fb = sel(...a);
+      if (a[0] !== '*') return fb;
+      const th = fb.then.bind(fb);
+      fb.then = (res, rej) => th(async r => {
+        try {
+          if (r && r.data && r.data.length >= 500){
+            const { data, error } = await sb.rpc(t === 'messages' ? 'latest_per_chat' : 'latest_per_group');
+            if (!error && data){
+              const have = new Set(r.data.map(x => x.id));
+              data.forEach(x => { if (!have.has(x.id)) r.data.push(x); });
+              r.data.sort(byTime);
+            }
+          }
+        } catch (e) { console.warn('chat list preview failed', e); }
+        return r;
+      }).then(res, rej);
+      return fb;
+    };
+    return qb;
+  };
+})();
+</script>
 </body>
 </html>
