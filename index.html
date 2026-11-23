@@ -1699,4 +1699,132 @@ const SVGNS = 'http://www.w3.org/2000/svg', TOKEN_RE = /\{\{([a-z0-9-]+)\}\}/g;
 (function(){
   const sp = document.createElementNS(SVGNS, 'svg');
   sp.setAttribute('style', 'position:absolute;width:0;height:0;overflow:hidden'); sp.setAttribute('aria-hidden', 'true');
-  sp.innerHTML = 
+  sp.innerHTML = Object.entries(ICONS).map(([k, v]) => `<symbol id="i-${k}" viewBox="0 0 24 24">${v}</symbol>`).join('');
+  document.body.prepend(sp);
+})();
+function svgFor(name){
+  const s = document.createElementNS(SVGNS, 'svg'), u = document.createElementNS(SVGNS, 'use');
+  s.setAttribute('class', 'i' + (name === 'star-fill' ? ' fill' : name === 'dot' ? ' online' : ''));
+  s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
+  u.setAttribute('href', '#i-' + name); s.appendChild(u); return s;
+}
+function iconize(root){
+  if (!root) return;
+  const top = root.nodeType === 3 ? root.parentNode : root; if (!top || top.nodeType !== 1 && top.nodeType !== 9) return;
+  const list = [], w = document.createTreeWalker(top, NodeFilter.SHOW_TEXT);
+  while (w.nextNode()){
+    const n = w.currentNode;
+    if (/^(SCRIPT|STYLE|TEXTAREA|OPTION|TITLE)$/.test(n.parentNode.nodeName)) continue;
+    if (n.nodeValue.includes('{{')) list.push(n);
+  }
+  list.forEach(n => {
+    const str = n.nodeValue, frag = document.createDocumentFragment(); let last = 0;
+    str.replace(TOKEN_RE, (m, name, idx) => { if (idx > last) frag.append(str.slice(last, idx)); if (ICONS[name]) frag.append(svgFor(name)); last = idx + m.length; return m; });
+    if (last < str.length) frag.append(str.slice(last));
+    n.replaceWith(frag);
+  });
+}
+new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => iconize(n)))).observe(document.body, { childList: true, subtree: true });
+iconize(document.body);
+
+/* ---------- Wire up ---------- */
+$('backupBtn').onclick = openBackupDlg;
+$('searchBtn').onclick = openSearch;
+$('searchBack').onclick = () => show('list');
+$('searchInput').addEventListener('input', renderSearch);
+$('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') saveRS(e.target.value); });
+$('avatarBtn').onclick = () => { fillProfile(); show('profile'); };
+$('profBack').onclick = () => show('list');
+$('newGroup').onclick = newGroupFlow;
+$('giBack').onclick = () => { groupChrome(); renderMsgs(); show('chat'); };
+$('settingsBtn').onclick = () => { sview = 'main'; gotoView('main'); };
+$('setBack').onclick = () => { if (sview === 'main'){ fillProfile(); show('profile'); } else gotoView('main'); };
+$('cnCancel').onclick = () => $('cnDlg').close();
+$('bannerBtn').onclick = openBackupDlg;
+$('bkGo').onclick = createBackup;
+$('bkCancel').onclick = () => $('bkDlg').close();
+$('bkClose').onclick = () => $('bkDlg').close();
+$('bkShare').onclick = saveBackupFile;
+$('bkCopy').onclick = async () => {
+  try { await navigator.clipboard.writeText(lastBackup); toast('Backup code copied. Paste it into a Drive doc or note.'); }
+  catch { toast('Copy failed. Use the file button instead.'); }
+};
+$('loginBtn').onclick = () => submitAuth('login');
+$('signupBtn').onclick = () => submitAuth('signup');
+$('p').addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth('login'); });
+$('logoutBtn').onclick = logout;
+$('newBtn').onclick = () => { $('roomMsg').textContent = ''; $('newDlg').showModal(); };
+$('newCancel').onclick = () => $('newDlg').close();
+$('newGo').onclick = newChat;
+$('newUser').addEventListener('keydown', e => { if (e.key === 'Enter') newChat(); });
+$('backBtn').onclick = () => {
+  if (current && current === roomPeer && msgs.some(m => otherId(m) === current)) $('leaveDlg').showModal();
+  else goList();
+};
+$('leaveKeep').onclick = () => { $('leaveDlg').close(); goList(); };
+$('leaveClear').onclick = async () => { const id = current; if (await clearChat(id)){ $('leaveDlg').close(); goList(); } };
+$('menuBtn').onclick = () => { menuMode(); $('menuWrap').hidden = false; };
+$('menuWrap').onclick = e => { if (e.target.id === 'menuWrap') $('menuWrap').hidden = true; };
+$('menu').onclick = async e => {
+  const a = e.target.closest('button') && e.target.closest('button').dataset.a;
+  if (!a) return;
+  $('menuWrap').hidden = true;
+  if (curGroup) return groupMenu(a);
+  const id = current;
+  if (a === 'call') toast('Calls arrive in a later update');
+  else if (a === 'search') openCS();
+  else if (a === 'fav'){ if (await setSetting(id, { favorite: !st(id).favorite })){ chatChrome(); renderList(); } }
+  else if (a === 'verify') showSafety();
+  else if (a === 'clear'){ if (confirm('Clear all messages in this chat? This deletes them for both of you.')) await clearChat(id); }
+  else if (a === 'delete') deleteChat(id);
+  else if (a === 'block') toggleBlock(id);
+  else if (a === 'report') $('repDlg').showModal();
+};
+$('unblockBtn').onclick = () => toggleBlock(current);
+$('peerBtn').onclick = () => curGroup ? openGroupInfo(curGroup) : openDetails(current);
+$('detBack').onclick = () => {
+  if (curGroup){ current = null; if (detReturn === 'ginfo') openGroupInfo(curGroup); else { groupChrome(); renderMsgs(); show('chat'); } detReturn = null; return; }
+  chatChrome(); renderMsgs(); show('chat');
+};
+$('detCall').onclick = () => toast('Calls arrive in a later update');
+$('detVideo').onclick = () => toast('Video calls arrive in a later update');
+$('detEdit').onclick = () => { $('nickIn').value = st(current).nickname || ''; $('nickDlg').showModal(); $('nickIn').focus(); };
+$('nickCancel').onclick = () => $('nickDlg').close();
+$('nickSave').onclick = async () => {
+  const v = $('nickIn').value.trim().slice(0, 30);
+  if (await setSetting(current, { nickname: v || null })){ $('nickDlg').close(); fillDetails(); chatChrome(); renderList(); }
+};
+$('mediaHead').onclick = () => { const o = $('mediaBody').hidden; $('mediaBody').hidden = !o; $('mediaArrow').textContent = o ? '{{chev-up}}' : '{{chev-down}}'; if (o) renderMedia(); };
+document.querySelectorAll('#mediaBody .tabs .chip').forEach(b => b.onclick = () => { mediaTab = b.dataset.t; renderMedia(); });
+$('swLock').onclick = async () => {
+  const on = !st(current).locked;
+  if (await setSetting(current, { locked: on })){ fillDetails(); renderList(); toast(on ? 'Chat locked. Your password is needed to open it.' : 'Chat unlocked'); }
+};
+$('swBlock').onclick = async () => { await toggleBlock(current); fillDetails(); };
+$('csInput').addEventListener('input', e => { cs.q = e.target.value.trim().toLowerCase(); renderMsgs(); });
+$('csLinks').onclick = () => { cs.links = !cs.links; $('csLinks').classList.toggle('on', cs.links); renderMsgs(); };
+$('csClose').onclick = () => { closeCS(); renderMsgs(); };
+$('repCancel').onclick = () => $('repDlg').close();
+$('repGo').onclick = async () => {
+  const { error } = await sb.from('reports').insert({ reporter_id: me.id, reported_id: current, reason: $('repReason').value, note: $('repNote').value.trim() || null });
+  $('repDlg').close(); $('repNote').value = '';
+  toast(error ? 'Could not send report' : 'Report sent. Thank you.');
+};
+$('roomCreate').onclick = createRoom;
+$('roomJoin').onclick = joinRoom;
+$('roomCode').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, ''); });
+$('roomCode').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(); });
+$('roomDlg').addEventListener('close', () => { clearInterval(roomTimer); roomTimer = null; });
+$('roomCancel').onclick = async () => {
+  const c = $('roomShow').textContent; $('roomDlg').close();
+  try { await sb.rpc('cancel_room', { p_code: c }); } catch {}
+};
+$('verClose').onclick = () => $('verDlg').close();
+$('sendBtn').onclick = send;
+$('msgInput').addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+
+applyTheme(localStorage.getItem('absol-theme') || 'lavender');
+start().catch(e => { console.error(e); show('auth'); $('err').textContent = friendly(e); });
+</script>
+</body>
+</html>
