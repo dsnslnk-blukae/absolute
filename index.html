@@ -2467,5 +2467,45 @@ start().catch(e => { console.error(e); show('auth'); $('err').textContent = frie
   $('logoutBtn').onclick = logout;
 })();
   </script>
+  <script>
+(function(){
+  const AC = window.AbsolCall;
+  const list = el('div', { className: 'plist' });
+  const inp = el('input', { placeholder: 'Or call by username', autocapitalize: 'off' });
+  const msg = el('div', { className: 'hint', style: 'color:var(--danger);margin-top:8px' });
+  const dlg = el('dialog', { id: 'callPick' },
+    el('h2', { textContent: 'New call' }), list,
+    el('div', { className: 'row' }, inp),
+    el('div', { className: 'row', style: 'margin-top:8px' },
+      chipBtn('{{phone}} Voice', () => byName(false)), chipBtn('{{video}} Video', () => byName(true))),
+    msg,
+    el('div', { className: 'row', style: 'margin-top:8px' }, el('button', { className: 'ghost', textContent: 'Cancel', onclick: () => dlg.close() })));
+  document.body.appendChild(dlg);
+
+  const go = (id, v) => { dlg.close(); AC.start(id, v); };
+  const row = id => el('div', { className: 'srow' },
+    el('div', { className: 'mr' }, avatar((profiles[id] || {}).username), el('div', { className: 'tx' }, el('b', { textContent: dname(id) }))),
+    el('div', { className: 'pr' }, chipBtn('{{phone}}', () => go(id, false)), chipBtn('{{video}}', () => go(id, true))));
+
+  async function byName(v){
+    const u = inp.value.trim().toLowerCase(); if (!u) return;
+    if (u === me.username){ msg.textContent = 'That’s you'; return; }
+    const { data } = await sb.from('profiles').select('*').eq('username', u).maybeSingle();
+    if (!data){ msg.textContent = 'User not found'; return; }
+    profiles[data.id] = data; go(data.id, v);
+  }
+
+  function open(){
+    msg.textContent = ''; inp.value = ''; list.textContent = '';
+    const ids = chatIds().filter(id => !st(id).blocked);
+    if (ids.length) ids.forEach(id => list.appendChild(row(id)));
+    else list.appendChild(el('div', { className: 'empty', textContent: 'No chats yet. Enter a username below.' }));
+    dlg.showModal();
+  }
+
+  $('cardCalls').appendChild(el('button', { className: 'fab', id: 'callFab', textContent: '{{plus}}', onclick: open }));
+  $('callFab').setAttribute('aria-label', 'New call');
+})();
+  </script>
 </body>
 </html>
