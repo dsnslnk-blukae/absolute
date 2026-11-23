@@ -2158,8 +2158,9 @@ applyTheme(localStorage.getItem('absol-theme') || 'lavender');
   }, true);
 })();
   </script>
-  <style>
-#callUI{position:fixed;inset:0;z-index:90;display:flex;flex-direction:column;align-items:center;justify-content:space-between;background:radial-gradient(120% 55% at 50% -8%,color-mix(in srgb,var(--accent) 24%,transparent),transparent 62%),var(--bg);color:var(--text);padding:calc(40px + env(safe-area-inset-top,0px)) 20px calc(34px + env(safe-area-inset-bottom,0px))}
+  <!-- ===== CALLS PART 1 START ===== -->
+<style>
+#callUI{position:fixed;inset:0;z-index:90;display:flex;flex-direction:column;align-items:center;justify-content:space-between;background:radial-gradient(120% 55% at 50% -8%,color-mix(in srgb,var(--accent) 24%,transparent),transparent 62%),var(--bg);color:var(--text);padding:calc(40px + env(safe-area-inset-top,0px)) 16px calc(30px + env(safe-area-inset-bottom,0px))}
 #rVid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000;opacity:0;z-index:0}
 #callUI.vid.live #rVid{opacity:1}
 #lVid{display:none;position:absolute;right:14px;top:calc(14px + env(safe-area-inset-top,0px));width:96px;height:132px;object-fit:cover;border-radius:18px;background:#000;transform:scaleX(-1);z-index:2}
@@ -2169,74 +2170,107 @@ applyTheme(localStorage.getItem('absol-theme') || 'lavender');
 #cStat{margin:0;color:var(--muted)}
 #callUI.vid.live #cAv{display:none}
 #callUI.vid.live #cStat,#callUI.vid.live .cinfo h2{color:#fff}
-.cctl{position:relative;z-index:2}
-.cbtns{display:flex;gap:20px;justify-content:center}
-.cb{width:64px;height:64px;border-radius:50%;padding:0;display:grid;place-items:center;background:var(--surface2);color:var(--text);background-image:none}
-.cb .i{width:26px;height:26px;margin:0}
+.cctl{position:relative;z-index:2;width:100%}
+.cbtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+#cIn{gap:48px}
+.cb{width:54px;height:54px;border-radius:50%;padding:0;display:grid;place-items:center;background:var(--surface2);color:var(--text);background-image:none}
+.cb .i{width:24px;height:24px;margin:0}
 .cb.on{background:var(--accent);color:var(--accent-text)}
 .cb.red{background:#e5484d;color:#fff}
 .cb.red .i{transform:rotate(135deg)}
 .cb.green{background:#2fb86b;color:#fff}
+#cReq{display:flex;gap:8px;align-items:center;background:var(--surface2);border-radius:22px;padding:10px 14px;margin:0 auto 14px;max-width:360px}
+#cReq[hidden]{display:none}
+#cReq span{flex:1}
 .callrow .miss{color:var(--danger)}
 </style>
+
 <div id="callUI" hidden>
   <video id="rVid" autoplay playsinline></video>
   <video id="lVid" autoplay playsinline muted></video>
   <div class="cinfo"><div id="cAv"></div><h2 id="cName"></h2><p id="cStat"></p></div>
   <div class="cctl">
+    <div id="cReq" hidden><span>Switch to video call?</span><button class="chip" id="cReqNo">No</button><button class="chip on" id="cReqYes">Yes</button></div>
     <div class="cbtns" id="cIn"><button class="cb red" id="cDec" aria-label="Decline"></button><button class="cb green" id="cAcc" aria-label="Accept"></button></div>
-    <div class="cbtns" id="cAct"><button class="cb" id="cMute" aria-label="Mute"></button><button class="cb" id="cCam" aria-label="Camera"></button><button class="cb" id="cFlip" aria-label="Flip camera"></button><button class="cb red" id="cEnd" aria-label="End call"></button></div>
+    <div class="cbtns" id="cAct"><button class="cb" id="cMute" aria-label="Mute"></button><button class="cb" id="cSpk" aria-label="Speaker"></button><button class="cb" id="cCam" aria-label="Video"></button><button class="cb" id="cFlip" aria-label="Flip camera"></button><button class="cb red" id="cEnd" aria-label="End call"></button></div>
   </div>
 </div>
-  <script>
-/* Optional, put BEFORE this script. Needed for calls over mobile data / strict NATs:
-   window.ABSOL_TURN = [{ urls:'turn:YOUR_HOST:443', username:'USER', credential:'PASS' }]; */
+
+<script>
 (function(){
   const AC = window.AbsolCall = {};
-  const TURN = window.ABSOL_TURN || [];
-  const ICE = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }, ...TURN] };
+  /* ===== PASTE YOUR METERED API KEY: replace YOUR_API_KEY ===== */
+  const METERED_URL = 'https://blukea.metered.live/api/v1/turn/credentials?apiKey=YOUR_API_KEY';
+  const STUN = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
   const U = id => document.getElementById(id);
-  const log = (...a) => console.log('[call]', ...a);
-  let call = null, callCh = null, subId = null, skew = 0, polling = false;
+  let call = null, callCh = null, subId = null, skew = 0, skewOk = false, polling = false;
+  let queue = Promise.resolve(), ice = null, iceAt = 0;
   const early = {}, kc = {}, seen = new Set();
-  let queue = Promise.resolve();
   const now = () => Date.now() + skew;
   const ckey = id => { const pub = profiles[id].public_key, k = me.id + pub; return kc[k] || (kc[k] = nacl.box.before(unb64(pub), me.sk)); };
+  const setStat = t => { if (!(call && call.started)) U('cStat').textContent = t; };
+  const camOpts = { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } };
+  const media = v => navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: v ? camOpts : false });
 
-  /* server clock offset (so a wrong phone clock never drops calls) */
+  /* server clock offset: a wrong phone clock can no longer drop calls */
   async function syncClock(){
-    try { const r = await fetch(location.href, { method: 'HEAD', cache: 'no-store' }); const d = r.headers.get('date'); if (d) skew = new Date(d).getTime() - Date.now(); } catch {}
+    try {
+      const t0 = Date.now(), { data, error } = await sb.rpc('server_now');
+      if (!error && data){ skew = new Date(data).getTime() - (t0 + Date.now()) / 2; skewOk = true; }
+    } catch {}
   }
 
+  /* TURN from Metered, free STUN as fallback */
+  async function getIce(){
+    if (ice && Date.now() - iceAt < 600000) return ice;
+    let extra = [];
+    if (!/YOUR_API_KEY/.test(METERED_URL)){
+      try {
+        const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 4000);
+        const r = await fetch(METERED_URL, { signal: ctl.signal }); clearTimeout(tm);
+        if (r.ok){ const j = await r.json(); if (Array.isArray(j)) extra = j; }
+      } catch (e){ console.warn('[call] TURN fetch failed', e); }
+    }
+    ice = [...STUN, ...extra]; iceAt = Date.now();
+    if (!extra.length) iceAt -= 540000;
+    return ice;
+  }
+
+  /* send an encrypted signal; returns true/false and keeps the reason in AC.err */
   async function sig(kind, peer, id, data){
     try {
       const n = nacl.randomBytes(nacl.box.nonceLength);
       const ct = nacl.box.after(nacl.util.decodeUTF8(JSON.stringify(data || {})), n, ckey(peer));
       const { error } = await sb.from('call_signals').insert({ call_id: id, recipient_id: peer, kind, ciphertext: b64(ct), nonce: b64(n) });
-      if (error) console.warn('[call] signal insert failed', kind, error.message);
-    } catch (e) { console.warn('[call] signal error', kind, e); }
+      if (error){ AC.err = error.message; console.warn('[call] signal failed', kind, error.message); return false; }
+      return true;
+    } catch (e){ AC.err = String(e.message || e); console.warn('[call] signal error', kind, e); return false; }
   }
-  const media = v => navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    video: v ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } : false });
 
+  function refreshVid(){
+    if (!call) return;
+    U('callUI').classList.toggle('vid', !!call.video);
+    U('cFlip').hidden = !call.video;
+    if (call.local) U('lVid').srcObject = call.local;
+    if (AC.onShow) AC.onShow();
+  }
   function showUI(state){
     const ui = U('callUI'); ui.hidden = false;
-    ui.classList.toggle('vid', !!call.video); ui.classList.toggle('live', state === 'live');
+    ui.classList.toggle('live', state === 'live');
     U('cIn').hidden = state !== 'ring'; U('cAct').hidden = state === 'ring';
-    U('cCam').hidden = U('cFlip').hidden = !call.video;
     U('cAv').replaceChildren(avatar((profiles[call.peer] || {}).username, 'big'));
     U('cName').textContent = dname(call.peer);
     U('cStat').textContent = state === 'ring' ? (call.video ? 'Incoming video call' : 'Incoming voice call') : state === 'out' ? 'Calling…' : 'Connecting…';
-    if (call.video && call.local) U('lVid').srcObject = call.local;
+    refreshVid();
   }
-  function mkPC(){
-    const pc = new RTCPeerConnection(ICE); call.pc = pc;
+  function mkPC(servers){
+    const pc = new RTCPeerConnection({ iceServers: servers }); call.pc = pc;
     call.local.getTracks().forEach(t => pc.addTrack(t, call.local));
     pc.onicecandidate = e => { if (e.candidate && call && call.pc === pc) sig('ice', call.peer, call.id, { c: e.candidate.toJSON() }); };
-    pc.ontrack = e => { U('rVid').srcObject = e.streams[0]; U('rVid').play().catch(() => {}); };
+    pc.ontrack = e => { const v = U('rVid'); v.srcObject = e.streams[0] || new MediaStream([e.track]); v.play().catch(() => {}); };
     pc.onconnectionstatechange = () => {
-      const s = pc.connectionState; log('pc', s);
+      const s = pc.connectionState;
       if (s === 'connected') connected();
       else if (s === 'failed') end('failed');
       else if (s === 'disconnected' && call){ clearTimeout(call.dt); call.dt = setTimeout(() => { if (call && call.pc === pc && pc.connectionState !== 'connected') end('failed'); }, 8000); }
@@ -2244,14 +2278,15 @@ applyTheme(localStorage.getItem('absol-theme') || 'lavender');
   }
   function connected(){
     if (!call || call.started) return;
-    call.started = Date.now(); clearTimeout(call.to); clearInterval(call.ring);
+    call.started = Date.now(); [call.to, call.hint].forEach(clearTimeout); clearInterval(call.ring);
     U('callUI').classList.add('live');
     const tick = () => { if (!call || !call.started) return; const s = Math.floor((Date.now() - call.started) / 1000); U('cStat').textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
     tick(); call.tick = setInterval(tick, 1000);
+    if (AC.onShow) AC.onShow();
   }
   async function flush(){
     const c = call; if (!c || !c.pc || !c.pc.remoteDescription) return;
-    while (c.cands.length) { try { await c.pc.addIceCandidate(c.cands.shift()); } catch {} }
+    while (c.cands.length){ try { await c.pc.addIceCandidate(c.cands.shift()); } catch {} }
   }
   function askNotif(){ try { if (window.Notification && Notification.permission === 'default') Notification.requestPermission().catch(() => {}); } catch {} }
 
@@ -2265,130 +2300,161 @@ applyTheme(localStorage.getItem('absol-theme') || 'lavender');
     if (!profiles[peer] || !profiles[peer].public_key) return toast('Could not reach this user');
     let stream; try { stream = await media(video); } catch { return toast(video ? 'Camera or microphone is blocked' : 'Microphone is blocked'); }
     if (call){ stream.getTracks().forEach(t => t.stop()); return; }
-    call = { id: crypto.randomUUID(), peer, video: !!video, dir: 'out', local: stream, cands: [] };
-    mkPC(); showUI('out');
+    const c = call = { id: crypto.randomUUID(), peer, video: !!video, dir: 'out', local: stream, cands: [] };
+    showUI('out');
+    const servers = await getIce(); if (call !== c) return;
+    mkPC(servers);
     try {
-      const o = await call.pc.createOffer(); await call.pc.setLocalDescription(o);
-      await sig('offer', peer, call.id, { sdp: o.sdp, video: !!video });
-    } catch { return end('failed'); }
-    call.to = setTimeout(() => end('missed'), 45000);
+      const o = await c.pc.createOffer(); await c.pc.setLocalDescription(o);
+      if (!(await sig('offer', peer, c.id, { sdp: o.sdp, video: !!video }))){ toast('Could not place the call: ' + (AC.err || 'network error')); return end('failed', true); }
+    } catch { return end('failed', true); }
+    if (call !== c) return;
+    c.hint = setTimeout(() => { if (call === c && !c.ringing) setStat('Waiting… they may be offline or the app is closed'); }, 12000);
+    c.to = setTimeout(() => end('missed'), 45000);
   }
   async function accept(){
     const c = call; if (!c || c.pc || c.dir !== 'in') return;
-    clearInterval(c.ring);
-    let stream; try { stream = await media(c.video); } catch { toast('Microphone is blocked'); return end('declined'); }
+    clearInterval(c.ring); clearTimeout(c.to);
+    let stream;
+    try { stream = await media(c.video); }
+    catch { try { stream = await media(false); c.video = false; toast('Camera blocked: joining with voice only'); } catch { toast('Microphone is blocked'); return end('declined'); } }
     if (call !== c){ stream.getTracks().forEach(t => t.stop()); return; }
-    c.local = stream; mkPC(); showUI('live'); U('callUI').classList.remove('live'); U('cStat').textContent = 'Connecting…';
+    c.local = stream; showUI('conn');
+    const servers = await getIce(); if (call !== c) return;
+    mkPC(servers);
     try {
       await c.pc.setRemoteDescription({ type: 'offer', sdp: c.offer }); await flush();
       const a = await c.pc.createAnswer(); await c.pc.setLocalDescription(a);
-      await sig('answer', c.peer, c.id, { sdp: a.sdp });
+      if (!(await sig('answer', c.peer, c.id, { sdp: a.sdp }))) end('failed', true);
     } catch { end('failed'); }
   }
   function end(reason, remote){
     if (!call) return; const c = call; call = null;
-    [c.to, c.dt].forEach(clearTimeout); [c.tick, c.ring].forEach(clearInterval);
+    [c.to, c.dt, c.hint].forEach(clearTimeout); [c.tick, c.ring].forEach(clearInterval);
+    if (c.up){ clearTimeout(c.up.to); if (!c.up.used && c.up.track) c.up.track.stop(); }
     if (!remote) sig(reason === 'declined' ? 'decline' : 'end', c.peer, c.id, {});
     try { c.pc && c.pc.close(); } catch {}
     if (c.local) c.local.getTracks().forEach(t => t.stop());
-    U('rVid').srcObject = null; U('lVid').srcObject = null; U('callUI').hidden = true;
+    U('rVid').srcObject = null; U('lVid').srcObject = null; U('cReq').hidden = true; U('callUI').hidden = true;
     const dur = c.started ? Math.round((Date.now() - c.started) / 1000) : 0;
     const status = dur ? 'completed' : reason === 'failed' ? 'failed' : c.dir === 'in' ? (reason === 'declined' ? 'declined' : 'missed')
       : reason === 'busy' ? 'busy' : reason === 'declined' ? 'declined' : 'noanswer';
     if (AC.log) AC.log({ peer: c.peer, dir: c.dir, video: c.video, t: Date.now(), status, dur });
     const nm = dname(c.peer);
     toast(dur ? 'Call ended' : status === 'missed' ? 'Missed call from ' + nm : status === 'busy' ? nm + ' is busy' :
-      status === 'declined' && c.dir === 'out' ? nm + ' declined' : status === 'failed' ? 'Call failed. Check your connection (a TURN server may be needed)' :
+      status === 'declined' && c.dir === 'out' ? nm + ' declined' : status === 'failed' ? 'Call failed. Check your connection' :
       status === 'noanswer' ? 'No answer' : 'Call ended');
-    setTimeout(() => sb.from('call_signals').delete().eq('call_id', c.id).then(() => {}), 3000);
+    if (AC.onEnd) AC.onEnd();
+    setTimeout(() => sb.from('call_signals').delete().eq('call_id', c.id).then(() => {}), 30000);
   }
 
-  /* one signal at a time, in order, never twice */
+  /* ---- switch voice call to video ---- */
+  function cancelUp(){ if (call && call.up){ clearTimeout(call.up.to); if (!call.up.used && call.up.track) call.up.track.stop(); call.up = null; } }
+  AC.upgrade = async () => {
+    if (!call || !call.started || call.video || call.up) return;
+    let s; try { s = await navigator.mediaDevices.getUserMedia({ video: camOpts }); } catch { return toast('Camera is blocked'); }
+    if (!call || call.video){ s.getTracks().forEach(t => t.stop()); return; }
+    call.up = { mine: true, track: s.getVideoTracks()[0] }; toast('Asking to switch to video…');
+    if (!(await sig('upgrade', call.peer, call.id, {}))){ cancelUp(); return toast('Could not send the request'); }
+    if (call && call.up) call.up.to = setTimeout(() => { if (call && call.up){ cancelUp(); toast('No answer to the video request'); } }, 20000);
+  };
+  AC.answerUpgrade = async ok => {
+    if (!call || !call.req) return; call.req = false; U('cReq').hidden = true;
+    await sig(ok ? 'upgrade-ok' : 'upgrade-no', call.peer, call.id, {});
+  };
+
+  /* ---- incoming signals: one at a time, in order, never twice ---- */
   function enqueue(r){
     if (!r || seen.has(r.id)) return;
     seen.add(r.id); if (seen.size > 500) seen.delete(seen.values().next().value);
     queue = queue.then(() => onSig(r)).catch(e => console.warn('[call] onSig', e));
   }
-
   async function onSig(r){
     if (!me || r.recipient_id !== me.id) return;
-    log('signal', r.kind, r.call_id);
     await loadProfiles([r.sender_id], true);
-    if (!profiles[r.sender_id]){ console.warn('[call] unknown sender', r.sender_id); return; }
+    if (!profiles[r.sender_id]) return;
     let d; try {
       const pt = nacl.box.open.after(unb64(r.ciphertext), unb64(r.nonce), ckey(r.sender_id));
       if (!pt) throw new Error('bad box');
       d = JSON.parse(nacl.util.encodeUTF8(pt));
-    } catch (e) {
-      console.warn('[call] decrypt failed', r.kind, e);
-      if (r.kind === 'offer') toast('Incoming call could not be decrypted (key mismatch?)');
-      return;
-    }
-    const k = r.kind, id = r.call_id;
+    } catch (e){ if (r.kind === 'offer') toast('Incoming call could not be decrypted'); return; }
+    const k = r.kind, id = r.call_id, mine = call && call.id === id;
     if (k === 'offer'){
       if (st(r.sender_id).blocked) return;
-      if (now() - new Date(r.created_at) > 90000) return;
-      if (call){ if (call.id !== id) sig('decline', r.sender_id, id, { busy: 1 }); return; }
+      if (now() - new Date(r.created_at) > (skewOk ? 60000 : 600000)) return;
+      if (call){ if (!mine) sig('decline', r.sender_id, id, { busy: 1 }); return; }
       call = { id, peer: r.sender_id, video: !!d.video, dir: 'in', offer: d.sdp, cands: early[id] || [] }; delete early[id];
-      showUI('ring');
+      showUI('ring'); sig('ringing', r.sender_id, id, {});
       const ring = () => { try { playSeq(RINGS[st(call && call.peer).ringtone || prefs.ringtone]); } catch {} if (navigator.vibrate) navigator.vibrate([300, 200, 300]); };
       ring(); call.ring = setInterval(() => { if (call) ring(); }, 2400);
       call.to = setTimeout(() => end('missed', true), 50000);
       if (document.hidden && window.Notification && Notification.permission === 'granted'){ try { new Notification('Absol', { body: 'Incoming call from ' + dname(r.sender_id) }); } catch {} }
+    } else if (k === 'ringing'){
+      if (mine && call.dir === 'out'){ call.ringing = true; setStat('Ringing…'); }
     } else if (k === 'answer'){
-      if (call && call.id === id && call.pc && !call.pc.remoteDescription){
+      if (mine && call.pc && !call.pc.remoteDescription){
         clearTimeout(call.to);
-        try { await call.pc.setRemoteDescription({ type: 'answer', sdp: d.sdp }); await flush(); U('cStat').textContent = 'Connecting…'; } catch { end('failed'); }
+        try { await call.pc.setRemoteDescription({ type: 'answer', sdp: d.sdp }); await flush(); setStat('Connecting…'); } catch { end('failed'); }
       }
     } else if (k === 'ice'){
-      if (call && call.id === id){ if (call.pc && call.pc.remoteDescription) call.pc.addIceCandidate(d.c).catch(() => {}); else call.cands.push(d.c); }
+      if (mine){ if (call.pc && call.pc.remoteDescription) call.pc.addIceCandidate(d.c).catch(() => {}); else call.cands.push(d.c); }
       else (early[id] = early[id] || []).push(d.c);
     } else if (k === 'end' || k === 'decline'){
-      if (call && call.id === id) end(k === 'decline' ? (d.busy ? 'busy' : 'declined') : 'remote', true);
+      if (mine) end(k === 'decline' ? (d.busy ? 'busy' : 'declined') : 'remote', true);
+    } else if (k === 'upgrade'){
+      if (!mine || !call.started || call.video) return;
+      if (call.up && call.up.mine){ if (call.dir === 'out') return; cancelUp(); }
+      call.req = true; U('cReq').hidden = false;
+    } else if (k === 'upgrade-no'){
+      if (mine && call.up){ cancelUp(); toast('Video request declined'); }
+    } else if (k === 'upgrade-ok'){
+      if (mine && call.up && call.up.mine){
+        clearTimeout(call.up.to); const t = call.up.track; call.up.used = true; call.up = null;
+        call.local.addTrack(t); call.pc.addTrack(t, call.local); call.video = true; refreshVid();
+        try { const o = await call.pc.createOffer(); await call.pc.setLocalDescription(o); await sig('reoffer', call.peer, call.id, { sdp: o.sdp }); } catch { toast('Could not switch to video'); }
+      }
+    } else if (k === 'reoffer'){
+      if (!mine || !call.pc) return;
+      try {
+        let vt = null;
+        if (!call.local.getVideoTracks().length){ try { vt = (await navigator.mediaDevices.getUserMedia({ video: camOpts })).getVideoTracks()[0]; } catch { toast('Camera blocked: you will only see their video'); } }
+        await call.pc.setRemoteDescription({ type: 'offer', sdp: d.sdp }); await flush();
+        if (vt){ call.local.addTrack(vt); call.pc.addTrack(vt, call.local); }
+        const a = await call.pc.createAnswer(); await call.pc.setLocalDescription(a);
+        await sig('reanswer', call.peer, call.id, {}); call.video = true; refreshVid();
+      } catch { toast('Could not switch to video'); }
+    } else if (k === 'reanswer'){
+      if (mine && call.pc) try { await call.pc.setRemoteDescription({ type: 'answer', sdp: d.sdp }); } catch {}
     }
   }
 
-  /* fallback: fetch recent signals, works even if Realtime is down or the tab was asleep */
+  /* fallback: fetch recent signals even if Realtime is down or the tab was asleep (no phone clock used) */
   async function poll(){
     if (!me || polling) return; polling = true;
     try {
-      const since = new Date(now() - 120000).toISOString();
-      const { data, error } = await sb.from('call_signals').select('*').eq('recipient_id', me.id).gt('created_at', since).order('id');
+      const { data, error } = await sb.from('call_signals').select('*').eq('recipient_id', me.id).order('id', { ascending: false }).limit(40);
       if (error){ console.warn('[call] poll', error.message); return; }
-      const ended = new Set((data || []).filter(r => r.kind === 'end' || r.kind === 'decline').map(r => r.call_id));
-      (data || []).forEach(r => { if (ended.has(r.call_id) && !(call && call.id === r.call_id)) return; enqueue(r); });
+      const rows = (data || []).reverse();
+      const ended = new Set(rows.filter(r => r.kind === 'end' || r.kind === 'decline').map(r => r.call_id));
+      rows.forEach(r => { if (ended.has(r.call_id) && !(call && call.id === r.call_id)) return; enqueue(r); });
     } finally { polling = false; }
   }
 
-  AC.start = startCall; AC.accept = accept; AC.end = end;
-  AC.mute = () => { if (!call || !call.local) return false; const t = call.local.getAudioTracks(), on = t.some(x => x.enabled); t.forEach(x => x.enabled = !on); return on; };
-  AC.cam = () => { if (!call || !call.local) return false; const t = call.local.getVideoTracks(), on = t.some(x => x.enabled); t.forEach(x => x.enabled = !on); return on; };
-  AC.flip = async () => {
-    if (!call || !call.video || !call.pc) return;
-    call.face = call.face === 'environment' ? 'user' : 'environment';
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: call.face } }), nt = s.getVideoTracks()[0];
-      const sd = call.pc.getSenders().find(x => x.track && x.track.kind === 'video'); if (sd) await sd.replaceTrack(nt);
-      call.local.getVideoTracks().forEach(t => { t.stop(); call.local.removeTrack(t); });
-      call.local.addTrack(nt); U('lVid').srcObject = call.local;
-    } catch { toast('Could not switch camera'); }
-  };
+  AC.start = startCall; AC.accept = accept; AC.end = end; AC.cur = () => call;
   AC.subscribe = () => {
     if (!me) return;
-    if (callCh && subId === me.id) return;               /* already listening */
+    if (callCh && subId === me.id) return;
     if (callCh) sb.removeChannel(callCh);
     subId = me.id; syncClock();
     callCh = sb.channel('calls-' + me.id)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'call_signals', filter: 'recipient_id=eq.' + me.id }, p => enqueue(p.new))
       .subscribe((s, err) => {
-        log('realtime', s, err || '');
+        console.log('[call] realtime', s, err || '');
         if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') setTimeout(() => { subId = null; AC.subscribe(); }, 3000);
       });
     poll();
   };
   AC.unsubscribe = () => { if (call) end('hangup'); if (callCh){ sb.removeChannel(callCh); callCh = null; } subId = null; };
-
-  /* self-starting: no dependency on the main app calling subscribe() */
   setInterval(() => { if (me && (!callCh || subId !== me.id)) AC.subscribe(); else if (!me && callCh) AC.unsubscribe(); }, 1500);
   setInterval(() => { if (me && !document.hidden) poll(); }, 4000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && me){ subId = null; AC.subscribe(); } });
@@ -2396,120 +2462,6 @@ applyTheme(localStorage.getItem('absol-theme') || 'lavender');
   window.addEventListener('pagehide', () => { if (call) end('hangup'); });
 })();
 </script>
-<script>
-(function(){
-  const AC = window.AbsolCall, U = id => document.getElementById(id);
-
-  /* extra icons */
-  Object.assign(ICONS, {
-    mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>',
-    'mic-off': '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3M3 3l18 18"/>',
-    'video-off': '<rect x="3" y="6" width="13" height="12" rx="3.5"/><path d="M16 10.5l5-3v9l-5-3M3 3l18 18"/>',
-    flip: '<path d="M4 12a8 8 0 0113.5-5.8L20 8M20 4v4h-4M20 12a8 8 0 01-13.5 5.8L4 16M4 20v-4h4"/>'
-  });
-  const sprite = document.querySelector('body > svg[aria-hidden]');
-  if (sprite) ['mic','mic-off','video-off','flip'].forEach(k => sprite.insertAdjacentHTML('beforeend', `<symbol id="i-${k}" viewBox="0 0 24 24">${ICONS[k]}</symbol>`));
-
-  /* call screen buttons */
-  U('cDec').textContent = '{{phone}}'; U('cAcc').textContent = '{{phone}}';
-  U('cMute').textContent = '{{mic}}'; U('cCam').textContent = '{{video}}';
-  U('cFlip').textContent = '{{flip}}'; U('cEnd').textContent = '{{phone}}';
-  U('cDec').onclick = () => AC.end('declined');
-  U('cAcc').onclick = () => AC.accept();
-  U('cEnd').onclick = () => AC.end('hangup');
-  U('cMute').onclick = e => { const muted = AC.mute(); e.currentTarget.classList.toggle('on', muted); e.currentTarget.textContent = muted ? '{{mic-off}}' : '{{mic}}'; };
-  U('cCam').onclick = e => { const off = AC.cam(); e.currentTarget.classList.toggle('on', off); e.currentTarget.textContent = off ? '{{video-off}}' : '{{video}}'; };
-  U('cFlip').onclick = () => AC.flip();
-
-  /* phone and video buttons in the chat header (one-to-one chats only) */
-  const hc = el('button', { className: 'iconbtn', id: 'hCall', textContent: '{{phone}}', onclick: () => AC.start(current, false) });
-  const hv = el('button', { className: 'iconbtn', id: 'hVid', textContent: '{{video}}', onclick: () => AC.start(current, true) });
-  $('menuBtn').before(hc, hv);
-  const _cc = chatChrome, _gc = groupChrome;
-  chatChrome = function(){ _cc(); hc.hidden = hv.hidden = false; };
-  groupChrome = function(){ _gc(); hc.hidden = hv.hidden = true; };
-
-  /* three-dot menu "Call" and contact info buttons */
-  const _mc = $('menu').onclick;
-  $('menu').onclick = e => {
-    const b = e.target.closest('button');
-    if (b && b.dataset.a === 'call' && !curGroup){ $('menuWrap').hidden = true; AC.start(current, false); return; }
-    return _mc(e);
-  };
-  $('detCall').onclick = () => AC.start(current, false);
-  $('detVideo').onclick = () => AC.start(current, true);
-
-  /* Calls tab with history (stored on this device) */
-  $('cardCalls').innerHTML = '<div id="callsList" style="flex:1;overflow-y:auto;min-height:0"></div>';
-  const key = () => 'absol-calls:' + me.id;
-  const dur = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
-  AC.render = function(){
-    const box = U('callsList'); if (!box || !me) return; box.textContent = '';
-    let a = []; try { a = JSON.parse(localStorage.getItem(key()) || '[]'); } catch {}
-    if (!a.length){ box.appendChild(el('div', { className: 'empty', textContent: 'No calls yet. Open a chat and tap the phone icon.' })); return; }
-    a.forEach(e => {
-      const label = { completed: dur(e.dur || 0), missed: 'Missed', declined: 'Declined', noanswer: 'No answer', busy: 'Busy', failed: 'Failed' }[e.status] || '';
-      const sub = el('span', { className: e.status === 'missed' ? 'miss' : '', textContent: (e.dir === 'out' ? 'Outgoing' : 'Incoming') + (e.video ? ' video' : ' voice') + ' · ' + label + ' · ' + fmtTime(new Date(e.t).toISOString()) });
-      const btn = el('button', { className: 'iconbtn', textContent: e.video ? '{{video}}' : '{{phone}}' });
-      btn.onclick = ev => { ev.stopPropagation(); AC.start(e.peer, e.video); };
-      const row = el('div', { className: 'convo callrow' }, avatar((profiles[e.peer] || {}).username), el('div', { className: 'tx' }, el('b', { textContent: dname(e.peer) }), sub), btn);
-      row.onclick = () => openChat(e.peer);
-      box.appendChild(row);
-    });
-  };
-  AC.log = function(e){
-    try { const a = JSON.parse(localStorage.getItem(key()) || '[]'); a.unshift(e); localStorage.setItem(key(), JSON.stringify(a.slice(0, 100))); } catch {}
-    AC.render();
-  };
-  let first = false; const _rl = renderList;
-  renderList = function(){ _rl(); if (!first && me){ first = true; AC.render(); } };
-
-  /* start listening after login, stop on logout */
-  const _sub = subscribe; subscribe = function(){ _sub(); AC.subscribe(); };
-  const _lo = logout;
-  logout = async function(){ AC.unsubscribe(); first = false; return _lo(); };
-  $('logoutBtn').onclick = logout;
-})();
-  </script>
-  <script>
-(function(){
-  const AC = window.AbsolCall;
-  const list = el('div', { className: 'plist' });
-  const inp = el('input', { placeholder: 'Or call by username', autocapitalize: 'off' });
-  const msg = el('div', { className: 'hint', style: 'color:var(--danger);margin-top:8px' });
-  const dlg = el('dialog', { id: 'callPick' },
-    el('h2', { textContent: 'New call' }), list,
-    el('div', { className: 'row' }, inp),
-    el('div', { className: 'row', style: 'margin-top:8px' },
-      chipBtn('{{phone}} Voice', () => byName(false)), chipBtn('{{video}} Video', () => byName(true))),
-    msg,
-    el('div', { className: 'row', style: 'margin-top:8px' }, el('button', { className: 'ghost', textContent: 'Cancel', onclick: () => dlg.close() })));
-  document.body.appendChild(dlg);
-
-  const go = (id, v) => { dlg.close(); AC.start(id, v); };
-  const row = id => el('div', { className: 'srow' },
-    el('div', { className: 'mr' }, avatar((profiles[id] || {}).username), el('div', { className: 'tx' }, el('b', { textContent: dname(id) }))),
-    el('div', { className: 'pr' }, chipBtn('{{phone}}', () => go(id, false)), chipBtn('{{video}}', () => go(id, true))));
-
-  async function byName(v){
-    const u = inp.value.trim().toLowerCase(); if (!u) return;
-    if (u === me.username){ msg.textContent = 'That’s you'; return; }
-    const { data } = await sb.from('profiles').select('*').eq('username', u).maybeSingle();
-    if (!data){ msg.textContent = 'User not found'; return; }
-    profiles[data.id] = data; go(data.id, v);
-  }
-
-  function open(){
-    msg.textContent = ''; inp.value = ''; list.textContent = '';
-    const ids = chatIds().filter(id => !st(id).blocked);
-    if (ids.length) ids.forEach(id => list.appendChild(row(id)));
-    else list.appendChild(el('div', { className: 'empty', textContent: 'No chats yet. Enter a username below.' }));
-    dlg.showModal();
-  }
-
-  $('cardCalls').appendChild(el('button', { className: 'fab', id: 'callFab', textContent: '{{plus}}', onclick: open }));
-  $('callFab').setAttribute('aria-label', 'New call');
-})();
-  </script>
+<!-- ===== CALLS PART 1 END ===== -->
 </body>
 </html>
