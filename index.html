@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#120d1f">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
 <title>Absol</title>
 <style>
 :root{--bg:#120d1f;--surface:#1b1430;--surface2:#241a3d;--text:#efeaff;--muted:#a094bd;--accent:#b69cff;--accent2:#e4d9ff;--accent-text:#1a0f33;--mine:#a68bff;--mine-text:#160f2b;--theirs:#2a2045;--border:#2e2447;--danger:#ff7a8a;color-scheme:dark}
@@ -155,6 +157,81 @@ textarea{resize:none}
 .plist input{width:auto}
 .pk{display:flex;gap:10px;align-items:center;justify-content:flex-start}
 #pickAdd{flex:none}
+/* ===== layout fixes ===== */
+.sbody,.dbody,.results{min-height:0;-webkit-overflow-scrolling:touch}
+.sbody>*,.dbody>*{flex-shrink:0}
+.sbody{padding-bottom:calc(32px + env(safe-area-inset-bottom,0px))}
+.dbody{padding-bottom:calc(32px + env(safe-area-inset-bottom,0px))}
+.member{flex-wrap:wrap}
+.member .mr{flex:1 1 0;min-width:0}
+.member .mr .tx span{max-width:100%}
+.member .acts{flex:1 1 100%;display:flex;justify-content:flex-end;gap:8px}
+.srow>span:first-child{min-width:0;overflow-wrap:anywhere}
+/* ===== icons ===== */
+.i{width:1.15em;height:1.15em;flex:none;vertical-align:-.22em;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;margin-inline-end:.4em}
+.i:last-child{margin-inline-end:0}
+.i.fill{fill:currentColor;stroke:currentColor;stroke-width:1.2;color:var(--accent)}
+.i.online{color:#4ade80;width:.7em;height:.7em;vertical-align:.02em;margin-inline-end:.35em}
+.iconbtn .i,#sendBtn .i,.fab .i,.chip .i{margin:0}
+.iconbtn .i{width:22px;height:22px}
+.fab .i{width:28px;height:28px;stroke-width:2.2}
+#sendBtn .i{width:21px;height:21px}
+.dacts button span .i{width:25px;height:25px;margin:0}
+.menu button .i{width:20px;height:20px;margin-inline-end:12px;vertical-align:-.3em}
+.switch button .i{width:18px;height:18px;margin-inline-end:7px}
+.empty .i{display:block;margin:0 auto 12px;width:38px;height:38px;opacity:.55}
+.srow .i{width:1.25em;height:1.25em}
+/* ===== modern look: bigger curves, gradients, softer depth ===== */
+:root{--grad:linear-gradient(135deg,var(--accent),var(--accent2));--ease:cubic-bezier(.22,1,.36,1)}
+body{font-family:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;letter-spacing:-.01em}
+#app{background:radial-gradient(120% 55% at 50% -8%,color-mix(in srgb,var(--accent) 24%,transparent),transparent 62%),var(--bg)}
+button{background:var(--grad);border-radius:20px;font-weight:600;transition:transform .16s var(--ease),filter .16s}
+button:active{transform:scale(.96)}
+input,textarea,select{border-radius:20px;padding:14px 16px}
+.brand{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:800;letter-spacing:-.02em}
+.top{padding:18px 16px 10px}
+.iconbtn{width:44px;height:44px;border-radius:18px}
+.searchpill{border-radius:24px;padding:10px 16px}
+.av{border-radius:36%;box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 22%,transparent)}
+.av.grp{border-radius:34%}
+#avatarBtn{border-radius:36%}
+.switch{border-radius:32px;padding:5px;margin:6px 12px 12px}
+.switch .ind{border-radius:27px;background:var(--grad);box-shadow:0 8px 20px color-mix(in srgb,var(--accent) 38%,transparent)}
+.switch button{border-radius:27px;padding:11px 10px;background:none}
+.viewport{padding:0 10px 10px}
+.card{border-radius:32px;background:#07050c;border-color:var(--border);box-shadow:0 18px 40px rgba(0,0,0,.55)}
+.convo{margin:6px 10px;padding:13px 14px;border:0;border-radius:26px;background:color-mix(in srgb,var(--surface) 72%,transparent)}
+.convo:active{background:var(--surface2)}
+.convo b{font-weight:700}
+.fab{width:60px;height:60px;border-radius:28px;background:var(--grad);box-shadow:0 12px 26px color-mix(in srgb,var(--accent) 40%,transparent)}
+.banner{margin:10px;border-radius:24px;background:var(--surface2)}
+.scard{border-radius:28px;background:color-mix(in srgb,var(--surface) 85%,transparent)}
+.srow{padding:15px 18px}
+.dbio,.dacts button{border-radius:26px}
+.chip{border-radius:18px;background:var(--surface2);color:var(--accent2)}
+.chip.on{background:var(--grad);color:var(--accent-text)}
+.tag{border-radius:12px;background:var(--grad)}
+.chead{background:color-mix(in srgb,var(--surface) 80%,transparent);backdrop-filter:blur(14px);padding:12px 14px}
+#msgs{padding:14px;gap:8px}
+.b.me,.b.them{border-radius:24px;padding:10px 15px}
+.b.me{background:var(--grad);border-bottom-right-radius:10px}
+.b.them{border-bottom-left-radius:10px}
+#composer{padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));background:color-mix(in srgb,var(--surface) 85%,transparent)}
+#composer input{border-radius:26px;background:var(--surface2)}
+#sendBtn{width:48px;height:48px;border-radius:22px;background:var(--grad)}
+.menu{border-radius:26px;overflow:hidden}
+.menu button{background:none;padding:14px 18px}
+dialog{border-radius:32px;border:1px solid var(--border);padding:22px}
+.pill{width:52px;height:30px}
+.pill i{border-radius:15px}
+.pill i::after{top:4px;left:4px;width:22px;height:22px}
+.pill input:checked+i::after{transform:translateX(22px)}
+.ghost{background:transparent;color:var(--accent)}
+.dacts button{background:var(--surface2)}
+.menu button,.switch button,.ghost,.iconbtn,.searchpill,#avatarBtn,.chip:not(.on),.dacts button{background-image:none}
+@supports (corner-shape: squircle){
+  .card,.scard,.switch,.switch .ind,.switch button,.iconbtn,.searchpill,.av,#avatarBtn,.b.me,.b.them,dialog,.menu,.fab,.convo,.dbio,.dacts button,.chip,.banner,button,input,textarea,select,#sendBtn{corner-shape:squircle}
+}
 </style>
 </head>
 <body>
@@ -174,81 +251,81 @@ textarea{resize:none}
   <section id="list" hidden>
     <div class="top">
       <h1 class="brand">Absol</h1>
-      <div class="topr"><button class="searchpill" id="searchBtn">🔍 Search</button><button id="avatarBtn" aria-label="Profile"></button></div>
+      <div class="topr"><button class="searchpill" id="searchBtn">{{search}} Search</button><button id="avatarBtn" aria-label="Profile"></button></div>
     </div>
-    <div class="switch" id="switch"><div class="ind" id="ind"></div><button data-i="0" class="on">Chats</button><button data-i="1">Calls</button></div>
+    <div class="switch" id="switch"><div class="ind" id="ind"></div><button data-i="0" class="on">{{chat}}Chats</button><button data-i="1">{{phone}}Calls</button></div>
     <div class="viewport" id="viewport"><div class="track" id="track">
       <div class="card" id="cardChats">
-        <div class="banner" id="banner" hidden><span>⚠️ Your key isn’t backed up. Clearing browser data would lose your old messages.</span><button id="bannerBtn">Back up</button></div>
+        <div class="banner" id="banner" hidden><span>{{alert}} Your key isn’t backed up. Clearing browser data would lose your old messages.</span><button id="bannerBtn">Back up</button></div>
         <div id="convos"></div>
-        <button class="fab" id="newBtn" aria-label="New chat">+</button>
+        <button class="fab" id="newBtn" aria-label="New chat">{{plus}}</button>
       </div>
-      <div class="card" id="cardCalls"><div class="empty">📞 No calls yet<br>Voice and video calls arrive in a later update.</div></div>
+      <div class="card" id="cardCalls"><div class="empty">{{phone}} No calls yet<br>Voice and video calls arrive in a later update.</div></div>
     </div></div>
   </section>
 
   <section id="search" hidden>
-    <div class="top"><button class="iconbtn" id="searchBack">←</button><input id="searchInput" placeholder="Search contacts and messages" autocomplete="off"></div>
+    <div class="top"><button class="iconbtn" id="searchBack">{{arrow-left}}</button><input id="searchInput" placeholder="Search contacts and messages" autocomplete="off"></div>
     <div id="searchResults" class="results"></div>
   </section>
 
   <section id="profile" hidden>
-    <div class="top"><button class="iconbtn" id="profBack">←</button><h1 class="brand" style="font-size:20px">Profile</h1></div>
+    <div class="top"><button class="iconbtn" id="profBack">{{arrow-left}}</button><h1 class="brand" style="font-size:20px">Profile</h1></div>
     <div class="sbody">
       <div class="ctr" id="profAv"></div>
       <h2 class="ctr" id="profName" style="margin:0"></h2>
       <div class="hint ctr" id="profUser" style="margin:0"></div>
       <div class="scard pad"><div class="dlabel">Bio</div><div id="profBio"></div></div>
       <div class="scard pad"><div class="dlabel">Email</div><div id="profEmail"></div><div class="dlabel" style="margin-top:12px">Number</div><div id="profPhone"></div></div>
-      <button class="wide" id="settingsBtn">⚙ Settings</button>
-      <button class="ghost wide" id="backupBtn">🔑 Back up key</button>
+      <button class="wide" id="settingsBtn">{{sliders}} Settings</button>
+      <button class="ghost wide" id="backupBtn">{{key}} Back up key</button>
       <button class="ghost wide" id="logoutBtn">Log out</button>
     </div>
   </section>
 
   <section id="settings" hidden>
-    <div class="top"><button class="iconbtn" id="setBack">←</button><h1 class="brand" id="setTitle" style="font-size:20px">Settings</h1></div>
+    <div class="top"><button class="iconbtn" id="setBack">{{arrow-left}}</button><h1 class="brand" id="setTitle" style="font-size:20px">Settings</h1></div>
     <div class="sbody" id="sbody"></div>
   </section>
 
   <section id="details" hidden>
-    <div class="top"><button class="iconbtn" id="detBack">←</button><h1 class="brand" style="font-size:20px">Contact info</h1></div>
+    <div class="top"><button class="iconbtn" id="detBack">{{arrow-left}}</button><h1 class="brand" style="font-size:20px">Contact info</h1></div>
     <div class="dbody">
       <div class="dcard"><div class="dlabel">Bio</div><div id="detBio"></div></div>
       <div class="dprof"><div id="detAv"></div><h2 id="detName"></h2><p class="hint" id="detUser"></p><p class="hint" id="detPhone"></p></div>
       <div class="dact">
-        <button class="act" id="detCall"><span>📞</span>Call</button>
-        <button class="act" id="detVideo"><span>🎥</span>Video</button>
-        <button class="act" id="detEdit"><span>✏️</span>Edit name</button>
+        <button class="act" id="detCall"><span>{{phone}}</span>Call</button>
+        <button class="act" id="detVideo"><span>{{video}}</span>Video</button>
+        <button class="act" id="detEdit"><span>{{pencil}}</span>Edit name</button>
       </div>
       <div class="dcard">
-        <button class="acc" id="mediaHead"><span>Media, links and docs</span><span id="mediaArrow">▾</span></button>
+        <button class="acc" id="mediaHead"><span>Media, links and docs</span><span id="mediaArrow">{{chev-down}}</span></button>
         <div id="mediaBody" hidden>
           <div class="tabs"><button class="chip on" data-t="images">Images</button><button class="chip" data-t="videos">Videos</button><button class="chip" data-t="docs">Docs</button><button class="chip" data-t="links">Links</button></div>
           <div id="mediaList"></div>
         </div>
       </div>
       <div class="dcard">
-        <div class="trow"><span>🔒 Lock this chat</span><button class="sw" id="swLock" role="switch" aria-checked="false"></button></div>
-        <div class="trow"><span class="red">🚫 Block this user</span><button class="sw red" id="swBlock" role="switch" aria-checked="false"></button></div>
+        <div class="trow"><span>{{lock}} Lock this chat</span><button class="sw" id="swLock" role="switch" aria-checked="false"></button></div>
+        <div class="trow"><span class="red">{{block}} Block this user</span><button class="sw red" id="swBlock" role="switch" aria-checked="false"></button></div>
       </div>
     </div>
   </section>
 
   <section id="ginfo" hidden>
-    <div class="top"><button class="iconbtn" id="giBack">←</button><h1 class="brand" style="font-size:20px">Group info</h1></div>
+    <div class="top"><button class="iconbtn" id="giBack">{{arrow-left}}</button><h1 class="brand" style="font-size:20px">Group info</h1></div>
     <div class="sbody" id="gibody"></div>
   </section>
 
   <section id="chat" hidden>
     <div class="chead">
-      <button class="iconbtn" id="backBtn" aria-label="Back">←</button>
+      <button class="iconbtn" id="backBtn" aria-label="Back">{{arrow-left}}</button>
       <div class="peer" id="peerBtn"><div id="chatAv"></div><div class="pn"><b id="chatTitle"></b><span id="chatSub"></span></div></div>
-      <button class="iconbtn" id="menuBtn" aria-label="More">⋮</button>
+      <button class="iconbtn" id="menuBtn" aria-label="More">{{more}}</button>
     </div>
-    <div class="csearch" id="csearch" hidden><input id="csInput" placeholder="Search this chat"><button class="chip" id="csLinks">Links</button><button class="ghost" id="csClose">✕</button></div>
+    <div class="csearch" id="csearch" hidden><input id="csInput" placeholder="Search this chat"><button class="chip" id="csLinks">Links</button><button class="ghost" id="csClose">{{x}}</button></div>
     <div id="msgs"></div>
-    <div id="composer"><input id="msgInput" placeholder="Message" autocomplete="off"><button id="sendBtn" aria-label="Send">➤</button></div>
+    <div id="composer"><input id="msgInput" placeholder="Message" autocomplete="off"><button id="sendBtn" aria-label="Send">{{send}}</button></div>
     <div class="blockbar" id="blockbar" hidden><span>You blocked this user.</span><button id="unblockBtn">Unblock</button></div>
   </section>
 </div>
@@ -257,7 +334,7 @@ textarea{resize:none}
   <h2>Start a chat</h2>
   <input id="newUser" placeholder="Their username" autocapitalize="off">
   <div class="row" style="margin-top:8px"><button id="newGo">Chat by username</button></div>
-  <div class="row" style="margin-top:8px"><button class="ghost" id="newGroup" style="border:1px solid var(--accent)">👥 Create a group</button></div>
+  <div class="row" style="margin-top:8px"><button class="ghost" id="newGroup" style="border:1px solid var(--accent)">{{users}} Create a group</button></div>
   <hr>
   <div class="row"><button id="roomCreate">Create a room code</button></div>
   <input id="roomCode" inputmode="numeric" maxlength="5" placeholder="Or enter a 5-digit room code" style="margin-top:12px">
@@ -296,7 +373,7 @@ textarea{resize:none}
     <div class="row" style="margin-top:8px"><button class="ghost" id="bkCancel">Cancel</button><button id="bkGo">Create backup</button></div>
   </div>
   <div id="bkDone" hidden>
-    <h2>✅ Backup created</h2>
+    <h2>{{check-circle}} Backup created</h2>
     <p class="hint">An encrypted copy is saved to your account. Also save a backup file to Google Drive (tap the button, then choose Drive). The file is useless without your passphrase, so don’t store the passphrase next to it.</p>
     <div class="row"><button id="bkShare">Save file to Drive</button></div>
     <div class="row" style="margin-top:8px"><button id="bkCopy" class="ghost" style="border:1px solid var(--accent)">Copy backup code instead</button></div>
@@ -327,7 +404,7 @@ textarea{resize:none}
 
 <dialog id="cnDlg">
   <h2 id="cnTitle"></h2>
-  <div class="srow" style="padding:8px 0;border:0"><span>🔕 Mute this chat</span><label class="pill"><input type="checkbox" id="cnMute"><i></i></label></div>
+  <div class="srow" style="padding:8px 0;border:0"><span>{{bell-off}} Mute this chat</span><label class="pill"><input type="checkbox" id="cnMute"><i></i></label></div>
   <p class="hint" style="margin:8px 0 4px">Message sound</p><select id="cnSound"></select>
   <p class="hint" style="margin:10px 0 4px">Call ringtone</p><select id="cnRing"></select>
   <div class="row" style="margin-top:14px"><button class="ghost" id="cnCancel">Cancel</button><button id="cnSave">Save</button></div>
@@ -349,17 +426,17 @@ textarea{resize:none}
 </dialog>
 
 <div id="menuWrap" hidden><div class="menu" id="menu">
-  <button data-a="call">📞 Call</button>
-  <button data-a="search">🔍 Search in chat</button>
-  <button data-a="fav" id="mFav">⭐ Add to favorites</button>
-  <button data-a="info">ℹ️ Group info</button>
-  <button data-a="mute" id="mMute">🔕 Mute</button>
-  <button data-a="verify">🔑 Verify encryption</button>
-  <button data-a="clear">🧹 Clear chat</button>
-  <button data-a="delete">🗑 Delete chat</button>
-  <button data-a="block" id="mBlock" class="danger">🚫 Block user</button>
-  <button data-a="report" class="danger">⚑ Report user</button>
-  <button data-a="leave" class="danger">🚪 Leave group</button>
+  <button data-a="call">{{phone}} Call</button>
+  <button data-a="search">{{search}} Search in chat</button>
+  <button data-a="fav" id="mFav">{{star-fill}} Add to favorites</button>
+  <button data-a="info">{{info}} Group info</button>
+  <button data-a="mute" id="mMute">{{bell-off}} Mute</button>
+  <button data-a="verify">{{key}} Verify encryption</button>
+  <button data-a="clear">{{eraser}} Clear chat</button>
+  <button data-a="delete">{{trash}} Delete chat</button>
+  <button data-a="block" id="mBlock" class="danger">{{block}} Block user</button>
+  <button data-a="report" class="danger">{{flag}} Report user</button>
+  <button data-a="leave" class="danger">{{log-out}} Leave group</button>
 </div></div>
 
 <dialog id="repDlg">
@@ -555,14 +632,14 @@ function renderList(){
     if (it.kind === 'u'){
       const id = it.id, m = it.m;
       n.textContent = dname(id);
-      s.textContent = st(id).locked ? '🔒 Locked chat' : (m.sender_id === me.id ? 'You: ' : '') + (decrypt(m) ?? '🔒 Can’t decrypt') + ' · ' + fmtTime(m.created_at);
+      s.textContent = st(id).locked ? '{{lock}} Locked chat' : (m.sender_id === me.id ? 'You: ' : '') + (decrypt(m) ?? '{{lock}} Can’t decrypt') + ' · ' + fmtTime(m.created_at);
       tx.append(n, s); d.append(avatar((profiles[id] || {}).username), tx);
-      if (st(id).favorite) n.textContent += ' ⭐';
+      if (st(id).favorite) n.textContent += ' {{star-fill}}';
       d.onclick = () => openChat(id);
     } else {
       const g = groups[it.id], gs = gset[g.id] || {}, m = it.m;
-      n.textContent = g.name + (gs.favorite ? ' ⭐' : '') + (gs.muted ? ' 🔕' : '');
-      s.textContent = m ? (m.sender_id === me.id ? 'You' : dname(m.sender_id)) + ': ' + (decryptG(m) ?? '🔒 Can’t decrypt') + ' · ' + fmtTime(m.created_at) : 'Group created';
+      n.textContent = g.name + (gs.favorite ? ' {{star-fill}}' : '') + (gs.muted ? ' {{bell-off}}' : '');
+      s.textContent = m ? (m.sender_id === me.id ? 'You' : dname(m.sender_id)) + ': ' + (decryptG(m) ?? '{{lock}} Can’t decrypt') + ' · ' + fmtTime(m.created_at) : 'Group created';
       tx.append(n, s); d.append(avatar(g.name, 'grp'), tx);
       d.onclick = () => openGroup(g.id);
     }
@@ -582,13 +659,13 @@ function renderMsgs(){
     });
   if (!list.length){
     const e = document.createElement('div'); e.className = 'empty';
-    e.textContent = (cs.q || cs.links) ? 'No matches in this chat' : 'No messages yet. Say hi 👋';
+    e.textContent = (cs.q || cs.links) ? 'No matches in this chat' : 'No messages yet. Say hi';
     box.appendChild(e); return;
   }
   list.forEach(m => {
     const t = decrypt(m), b = document.createElement('div');
     b.className = 'b ' + (m.sender_id === me.id ? 'me' : 'them') + (t == null ? ' fail' : '') + (m.pending ? ' pending' : '');
-    const tx = document.createElement('span'); tx.textContent = t ?? '🔒 Can’t decrypt this message';
+    const tx = document.createElement('span'); tx.textContent = t ?? '{{lock}} Can’t decrypt this message';
     const sm = document.createElement('small'); sm.textContent = fmtTime(m.created_at);
     b.append(tx, sm); box.appendChild(b);
   });
@@ -634,7 +711,7 @@ async function send(){
 async function newChat(){
   const u = $('newUser').value.trim().toLowerCase();
   if (!u) return;
-  if (u === me.username) return toast('That’s you 🙂');
+  if (u === me.username) return toast('That’s you');
   const { data } = await sb.from('profiles').select('*').eq('username', u).maybeSingle();
   if (!data) return toast('User not found');
   profiles[data.id] = data;
@@ -879,10 +956,10 @@ function chatChrome(){
   $('chatTitle').textContent = dname(current);
   $('chatAv').replaceChildren(avatar(p.username));
   const on = me.showOnline && online.has(current);
-  $('chatSub').textContent = (on ? '● Online' : '') + (f.favorite ? (on ? ' · ' : '') + '⭐ Favorite' : '');
+  $('chatSub').textContent = (on ? '{{dot}} Online' : '') + (f.favorite ? (on ? ' · ' : '') + '{{star-fill}} Favorite' : '');
   $('composer').hidden = blocked; $('blockbar').hidden = !blocked;
-  $('mFav').textContent = f.favorite ? '⭐ Remove from favorites' : '⭐ Add to favorites';
-  $('mBlock').textContent = blocked ? '✅ Unblock user' : '🚫 Block user';
+  $('mFav').textContent = f.favorite ? '{{star-fill}} Remove from favorites' : '{{star-fill}} Add to favorites';
+  $('mBlock').textContent = blocked ? '{{check-circle}} Unblock user' : '{{block}} Block user';
 }
 function openCS(){ $('csearch').hidden = false; $('csInput').focus(); }
 function closeCS(){ cs.q = ''; cs.links = false; $('csInput').value = ''; $('csLinks').classList.remove('on'); $('csearch').hidden = true; }
@@ -926,13 +1003,13 @@ function fillDetails(){
   $('detAv').replaceChildren(avatar(p.username, 'big'));
   $('detName').textContent = dname(current);
   $('detUser').textContent = '@' + (p.username || '');
-  $('detPhone').textContent = p.phone ? '📱 ' + p.phone : '';
+  $('detPhone').textContent = p.phone ? '{{phone}} ' + p.phone : '';
   setSw($('swLock'), !!f.locked); setSw($('swBlock'), !!f.blocked);
   renderMedia();
 }
 function openDetails(id){
   if (!id) return;
-  current = id; $('mediaBody').hidden = true; $('mediaArrow').textContent = '▾';
+  current = id; $('mediaBody').hidden = true; $('mediaArrow').textContent = '{{chev-down}}';
   fillDetails(); show('details');
 }
 function renderMedia(){
@@ -1090,8 +1167,8 @@ function openChatNotif(id){
 
 const VIEWS = {
   main(b){
-    b.append(scard(...[['👤 Profile','profile'],['🔒 Locked chats','locks'],['🛡 Privacy','privacy'],['🚫 Blocked contacts','blocked'],['🔔 Notifications','notif'],['🎨 Theme','theme']]
-      .map(([t, v]) => srow(t, '›', () => gotoView(v)))));
+    b.append(scard(...[['{{user}} Profile','profile'],['{{lock}} Locked chats','locks'],['{{shield}} Privacy','privacy'],['{{block}} Blocked contacts','blocked'],['{{bell}} Notifications','notif'],['{{palette}} Theme','theme']]
+      .map(([t, v]) => srow(t, '{{chev-right}}', () => gotoView(v)))));
   },
   profile(b){
     const p = profiles[me.id] || {};
@@ -1143,16 +1220,16 @@ const VIEWS = {
     const ids = chatIds();
     b.append(scard(
       srow('Enable notifications', pill(prefs.notif_enabled, async v => { await savePrefs({ notif_enabled: v }); if (v && window.Notification && Notification.permission === 'default') Notification.requestPermission(); })),
-      srow('Message sound', el('div', { className: 'pr' }, snd, chipBtn('▶', () => playSeq(TONES[snd.value])))),
-      srow('Call ringtone', el('div', { className: 'pr' }, rng, chipBtn('▶', () => playSeq(RINGS[rng.value]))))),
+      srow('Message sound', el('div', { className: 'pr' }, snd, chipBtn('{{play}}', () => playSeq(TONES[snd.value])))),
+      srow('Call ringtone', el('div', { className: 'pr' }, rng, chipBtn('{{play}}', () => playSeq(RINGS[rng.value]))))),
       el('div', { className: 'sec', textContent: 'Chat-specific' }),
       ids.length ? scard(...ids.map(id => { const f = st(id);
-        return srow(dname(id), el('span', { className: 'r', textContent: f.muted ? '🔕 Muted' : (f.notif_sound || f.ringtone) ? 'Custom' : 'Default' }), () => openChatNotif(id)); })) : empty('No chats yet'),
+        return srow(dname(id), el('span', { className: 'r', textContent: f.muted ? '{{bell-off}} Muted' : (f.notif_sound || f.ringtone) ? 'Custom' : 'Default' }), () => openChatNotif(id)); })) : empty('No chats yet'),
       el('p', { className: 'hint', textContent: 'Sounds play inside Absol. Your phone’s own notification sound cannot be changed from a web app.' }));
   },
   theme(b){
     b.append(scard(...Object.entries(THEMES).map(([k, t]) => srow(t.n,
-      el('span', {}, el('span', { className: 'swatch', style: 'background:' + t.v.accent }), el('span', { className: 'swatch', style: 'background:' + t.v.accent2 }), prefs.theme === k ? ' ✓' : ''),
+      el('span', {}, el('span', { className: 'swatch', style: 'background:' + t.v.accent }), el('span', { className: 'swatch', style: 'background:' + t.v.accent2 }), prefs.theme === k ? ' {{check}}' : ''),
       () => { applyTheme(k); savePrefs({ theme: k }); rerender(); }))));
   }
 };
@@ -1290,10 +1367,10 @@ function groupChrome(){
   const g = groups[curGroup]; if (!g) return;
   const gs = gset[g.id] || {};
   $('chatTitle').textContent = g.name; $('chatAv').replaceChildren(avatar(g.name, 'grp'));
-  $('chatSub').textContent = `${(gmembers[g.id] || []).length} members` + (gs.muted ? ' · 🔕 Muted' : '');
+  $('chatSub').textContent = `${(gmembers[g.id] || []).length} members` + (gs.muted ? ' · {{bell-off}} Muted' : '');
   $('composer').hidden = false; $('blockbar').hidden = true;
-  $('mFav').textContent = gs.favorite ? '⭐ Remove from favorites' : '⭐ Add to favorites';
-  $('mMute').textContent = gs.muted ? '🔔 Unmute' : '🔕 Mute';
+  $('mFav').textContent = gs.favorite ? '{{star-fill}} Remove from favorites' : '{{star-fill}} Add to favorites';
+  $('mMute').textContent = gs.muted ? '{{bell}} Unmute' : '{{bell-off}} Mute';
 }
 function openGroup(gid){
   if (!groups[gid]) return;
@@ -1308,12 +1385,12 @@ function renderGroupMsgs(){
       const t = decryptG(m) || '';
       return (!cs.q || t.toLowerCase().includes(cs.q)) && (!cs.links || /https?:\/\/\S+/i.test(t));
     });
-  if (!list.length){ box.appendChild(empty((cs.q || cs.links) ? 'No matches in this group' : 'No messages yet. Say hi 👋')); return; }
+  if (!list.length){ box.appendChild(empty((cs.q || cs.links) ? 'No matches in this group' : 'No messages yet. Say hi')); return; }
   let prev = null;
   list.forEach(m => {
     const mine = m.sender_id === me.id, t = decryptG(m);
     const b = el('div', { className: 'b ' + (mine ? 'me' : 'them') + (t == null ? ' fail' : '') + (m.pending ? ' pending' : '') },
-      el('span', { textContent: t ?? '🔒 Can’t decrypt this message' }), el('small', { textContent: fmtTime(m.created_at) }));
+      el('span', { textContent: t ?? '{{lock}} Can’t decrypt this message' }), el('small', { textContent: fmtTime(m.created_at) }));
     if (mine) box.appendChild(b);
     else {
       const sid = m.sender_id, open = () => { detReturn = 'chat'; openDetails(sid); };
@@ -1385,9 +1462,10 @@ function memberRow(g, m, adm){
   const acts = adm && id !== me.id ? [
     chipBtn(m.is_admin ? 'Demote' : 'Make admin', async e => { e.stopPropagation(); const { error } = await sb.rpc('group_set_admin', { p_group: g.id, p_user: id, p_admin: !m.is_admin }); if (error) return toast(friendly(error)); await loadGroups(false); openGroupInfo(g.id); }),
     chipBtn('Remove', async e => { e.stopPropagation(); if (confirm(`Remove ${dname(id)} from the group?`) && await changeMembers(g.id, [], [id])) openGroupInfo(g.id); })] : [];
-  const row = el('div', { className: 'srow tap' },
+  const row = el('div', { className: 'srow tap member' },
     el('div', { className: 'mr' }, avatar(p.username), el('div', { className: 'tx' }, el('b', { textContent: id === me.id ? 'You' : dname(id) }), el('span', { className: 'r', textContent: p.bio || '@' + (p.username || '') }))),
-    el('div', { className: 'pr' }, m.is_admin ? el('span', { className: 'tag', textContent: 'Admin' }) : '', ...acts));
+    m.is_admin ? el('span', { className: 'tag', textContent: 'Admin' }) : '',
+    acts.length ? el('div', { className: 'acts' }, ...acts) : '');
   if (id !== me.id) row.onclick = () => { detReturn = 'ginfo'; openDetails(id); };
   return row;
 }
@@ -1400,7 +1478,7 @@ function openGroupInfo(gid){
     el('h2', { className: 'ctr', textContent: g.name, style: 'margin:0' }),
     el('div', { className: 'hint ctr', textContent: `${mem.length} of 50 members`, style: 'margin:0' }),
     el('div', { className: 'scard pad' }, el('div', { className: 'dlabel', textContent: 'Description' }), el('div', { textContent: g.description || 'No description' })),
-    adm ? el('button', { className: 'wide', textContent: '✏️ Edit name and description', onclick: async () => {
+    adm ? el('button', { className: 'wide', textContent: '{{pencil}} Edit name and description', onclick: async () => {
       const name = prompt('Group name', g.name); if (name === null) return;
       const desc = prompt('Description (optional)', g.description || ''); if (desc === null) return;
       if (!name.trim()) return toast('Name cannot be empty');
@@ -1409,13 +1487,83 @@ function openGroupInfo(gid){
     } }) : '',
     el('div', { className: 'sec', textContent: 'Members' }),
     scard(...mem.map(m => memberRow(g, m, adm))),
-    adm && mem.length < 50 ? el('button', { className: 'wide', textContent: '＋ Add members', onclick: async () => {
+    adm && mem.length < 50 ? el('button', { className: 'wide', textContent: '{{plus}} Add members', onclick: async () => {
       const r = await pickMembers('Add members', new Set(mem.map(x => x.user_id)), false, 'Add'); if (!r) return;
       if (await changeMembers(gid, r.ids, [])){ toast('Members added'); openGroupInfo(gid); }
     } }) : '',
     el('button', { className: 'ghost wide', style: 'color:var(--danger);border:1px solid var(--border)', textContent: 'Leave group', onclick: () => leaveGroup(gid) }));
   show('ginfo');
 }
+
+/* ---------- Icons: custom SVG set (replaces emoji) ---------- */
+const ICONS = {
+  search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+  sliders:'<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>',
+  key:'<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M16 7l3 3M14 9l2 2"/>',
+  phone:'<path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2z"/>',
+  video:'<rect x="3" y="6" width="13" height="12" rx="3.5"/><path d="M16 10.5l5-3v9l-5-3"/>',
+  pencil:'<path d="M4 20h4L19 9a2.8 2.8 0 00-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>',
+  image:'<rect x="3" y="4" width="18" height="16" rx="4.5"/><circle cx="9" cy="10" r="1.6"/><path d="M21 16l-5-5-8 8"/>',
+  lock:'<rect x="5" y="11" width="14" height="10" rx="3.5"/><path d="M8 11V8a4 4 0 018 0v3"/>',
+  block:'<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
+  'star-fill':'<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.8 6.8 19.6l1-5.8L3.5 9.7l5.9-.9L12 3.5z"/>',
+  'bell-off':'<path d="M9.5 19a2.5 2.5 0 005 0M6 10a6 6 0 019-5.2M18 11v3l2 3H8M6 10v4l-2 3h2"/><path d="M3 3l18 18"/>',
+  bell:'<path d="M6 10a6 6 0 0112 0v4l2 3H4l2-3v-4z"/><path d="M10 20a2 2 0 004 0"/>',
+  eraser:'<path d="M7 20h13"/><path d="M5.5 13.5l8-8a2.1 2.1 0 013 0l3 3a2.1 2.1 0 010 3l-8 8H9l-3.5-3.5a2.1 2.1 0 010-2.5z"/>',
+  trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V4h6v3"/>',
+  flag:'<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+  'log-out':'<path d="M9 4H6a2 2 0 00-2 2v12a2 2 0 002 2h3M16 8l4 4-4 4M20 12H9"/>',
+  info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+  users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0113 0"/><circle cx="17" cy="9" r="2.6"/><path d="M17 14.5a5.5 5.5 0 014.5 5.5"/>',
+  user:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/>',
+  shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/>',
+  palette:'<path d="M12 3a9 9 0 100 18c1.5 0 2-1 1.5-2-.6-1.2.2-2.5 1.7-2.5H18a3 3 0 003-3c0-5-4-10.5-9-10.5z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/>',
+  send:'<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4 18-7z"/>',
+  more:'<circle cx="12" cy="5" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.6" fill="currentColor" stroke="none"/>',
+  'arrow-left':'<path d="M19 12H5M11 6l-6 6 6 6"/>',
+  x:'<path d="M6 6l12 12M18 6L6 18"/>',
+  'chev-right':'<path d="M9 6l6 6-6 6"/>',
+  'chev-down':'<path d="M6 9l6 6 6-6"/>',
+  'chev-up':'<path d="M6 15l6-6 6 6"/>',
+  dot:'<circle cx="12" cy="12" r="6" fill="currentColor" stroke="none"/>',
+  'check-circle':'<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
+  check:'<path d="M5 12.5l4.5 4.5L19 7"/>',
+  alert:'<path d="M12 4l9 16H3L12 4z"/><path d="M12 10v4M12 17h.01"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  play:'<path d="M8 5l11 7-11 7V5z" fill="currentColor"/>',
+  chat:'<path d="M5 5h14a2 2 0 012 2v8a2 2 0 01-2 2h-7l-5 4v-4H5a2 2 0 01-2-2V7a2 2 0 012-2z"/>'
+};
+const SVGNS = 'http://www.w3.org/2000/svg', TOKEN_RE = /\{\{([a-z0-9-]+)\}\}/g;
+(function(){
+  const sp = document.createElementNS(SVGNS, 'svg');
+  sp.setAttribute('style', 'position:absolute;width:0;height:0;overflow:hidden'); sp.setAttribute('aria-hidden', 'true');
+  sp.innerHTML = Object.entries(ICONS).map(([k, v]) => `<symbol id="i-${k}" viewBox="0 0 24 24">${v}</symbol>`).join('');
+  document.body.prepend(sp);
+})();
+function svgFor(name){
+  const s = document.createElementNS(SVGNS, 'svg'), u = document.createElementNS(SVGNS, 'use');
+  s.setAttribute('class', 'i' + (name === 'star-fill' ? ' fill' : name === 'dot' ? ' online' : ''));
+  s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('aria-hidden', 'true');
+  u.setAttribute('href', '#i-' + name); s.appendChild(u); return s;
+}
+function iconize(root){
+  if (!root) return;
+  const top = root.nodeType === 3 ? root.parentNode : root; if (!top || top.nodeType !== 1 && top.nodeType !== 9) return;
+  const list = [], w = document.createTreeWalker(top, NodeFilter.SHOW_TEXT);
+  while (w.nextNode()){
+    const n = w.currentNode;
+    if (/^(SCRIPT|STYLE|TEXTAREA|OPTION|TITLE)$/.test(n.parentNode.nodeName)) continue;
+    if (n.nodeValue.includes('{{')) list.push(n);
+  }
+  list.forEach(n => {
+    const str = n.nodeValue, frag = document.createDocumentFragment(); let last = 0;
+    str.replace(TOKEN_RE, (m, name, idx) => { if (idx > last) frag.append(str.slice(last, idx)); if (ICONS[name]) frag.append(svgFor(name)); last = idx + m.length; return m; });
+    if (last < str.length) frag.append(str.slice(last));
+    n.replaceWith(frag);
+  });
+}
+new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => iconize(n)))).observe(document.body, { childList: true, subtree: true });
+iconize(document.body);
 
 /* ---------- Wire up ---------- */
 $('backupBtn').onclick = openBackupDlg;
@@ -1483,7 +1631,7 @@ $('nickSave').onclick = async () => {
   const v = $('nickIn').value.trim().slice(0, 30);
   if (await setSetting(current, { nickname: v || null })){ $('nickDlg').close(); fillDetails(); chatChrome(); renderList(); }
 };
-$('mediaHead').onclick = () => { const o = $('mediaBody').hidden; $('mediaBody').hidden = !o; $('mediaArrow').textContent = o ? '▴' : '▾'; if (o) renderMedia(); };
+$('mediaHead').onclick = () => { const o = $('mediaBody').hidden; $('mediaBody').hidden = !o; $('mediaArrow').textContent = o ? '{{chev-up}}' : '{{chev-down}}'; if (o) renderMedia(); };
 document.querySelectorAll('#mediaBody .tabs .chip').forEach(b => b.onclick = () => { mediaTab = b.dataset.t; renderMedia(); });
 $('swLock').onclick = async () => {
   const on = !st(current).locked;
