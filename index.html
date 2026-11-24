@@ -2462,5 +2462,202 @@ applyTheme(localStorage.getItem('absol-theme') || 'lavender');
 })();
 </script>
 <!-- ===== CALLS PART 1 END ===== -->
+  <!-- ===== CALLS PART 2 START ===== -->
+<script>
+(function(){
+  const AC = window.AbsolCall, U = id => document.getElementById(id);
+
+  /* ---------- extra icons ---------- */
+  Object.assign(ICONS, {
+    mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/>',
+    'mic-off': '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3M3 3l18 18"/>',
+    'video-off': '<rect x="3" y="6" width="13" height="12" rx="3.5"/><path d="M16 10.5l5-3v9l-5-3M3 3l18 18"/>',
+    flip: '<path d="M4 12a8 8 0 0113.5-5.8L20 8M20 4v4h-4M20 12a8 8 0 01-13.5 5.8L4 16M4 20v-4h4"/>',
+    speaker: '<path d="M11 5L6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 010 7M18.5 5.5a9 9 0 010 13"/>'
+  });
+  const sprite = document.querySelector('body > svg[aria-hidden]');
+  if (sprite) ['mic','mic-off','video-off','flip','speaker'].forEach(k => sprite.insertAdjacentHTML('beforeend', `<symbol id="i-${k}" viewBox="0 0 24 24">${ICONS[k]}</symbol>`));
+
+  /* ---------- in-call buttons ---------- */
+  const setIcon = (b, n) => { if (b.dataset.ic !== n){ b.dataset.ic = n; b.textContent = '{{' + n + '}}'; } };
+  setIcon(U('cDec'), 'phone'); setIcon(U('cAcc'), 'phone'); setIcon(U('cEnd'), 'phone');
+  setIcon(U('cMute'), 'mic'); setIcon(U('cSpk'), 'speaker'); setIcon(U('cCam'), 'video'); setIcon(U('cFlip'), 'flip');
+  let spkI = 0;
+
+  function updateBtns(){
+    const c = AC.cur(); if (!c || !c.local) return;
+    const a = c.local.getAudioTracks(), muted = a.length > 0 && !a.some(t => t.enabled);
+    U('cMute').classList.toggle('on', muted); setIcon(U('cMute'), muted ? 'mic-off' : 'mic');
+    if (c.video){
+      const v = c.local.getVideoTracks(), off = v.length > 0 && !v.some(t => t.enabled);
+      U('cCam').classList.toggle('on', off); setIcon(U('cCam'), off ? 'video-off' : 'video');
+    } else { U('cCam').classList.remove('on'); setIcon(U('cCam'), 'video'); }
+  }
+  AC.onShow = updateBtns;
+  AC.onEnd = () => {
+    spkI = 0; U('cSpk').classList.remove('on');
+    ['cMute','cCam'].forEach(i => U(i).classList.remove('on')); setIcon(U('cMute'), 'mic'); setIcon(U('cCam'), 'video');
+    const v = U('rVid'); if (v.setSinkId) v.setSinkId('').catch(() => {});
+  };
+
+  U('cDec').onclick = () => AC.end('declined');
+  U('cAcc').onclick = () => AC.accept();
+  U('cEnd').onclick = () => AC.end('hangup');
+  U('cReqYes').onclick = () => AC.answerUpgrade(true);
+  U('cReqNo').onclick = () => AC.answerUpgrade(false);
+
+  U('cMute').onclick = () => {
+    const c = AC.cur(); if (!c || !c.local) return;
+    const t = c.local.getAudioTracks(), on = t.some(x => x.enabled);
+    t.forEach(x => x.enabled = !on); updateBtns();
+  };
+  U('cCam').onclick = () => {
+    const c = AC.cur(); if (!c || !c.local) return;
+    if (!c.started) return toast('Wait until the call connects');
+    if (!c.video) return AC.upgrade();
+    const t = c.local.getVideoTracks(), on = t.some(x => x.enabled);
+    t.forEach(x => x.enabled = !on); updateBtns();
+  };
+  U('cSpk').onclick = async () => {
+    const v = U('rVid');
+    if (!v.setSinkId) return toast('Your browser cannot switch speaker here. Use your phone volume or Bluetooth.');
+    let list = [];
+    try { list = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audiooutput'); } catch {}
+    if (list.length < 2) return toast('No other audio output found on this device');
+    spkI = (spkI + 1) % list.length;
+    try { await v.setSinkId(list[spkI].deviceId); U('cSpk').classList.toggle('on', spkI !== 0); toast('Audio: ' + (list[spkI].label || 'Output ' + (spkI + 1))); }
+    catch { toast('Could not switch audio output'); }
+  };
+  U('cFlip').onclick = async () => {
+    const c = AC.cur(); if (!c || !c.video || !c.pc) return;
+    const prev = c.face || 'user', next = prev === 'user' ? 'environment' : 'user';
+    c.local.getVideoTracks().forEach(t => t.stop());
+    let s;
+    try { s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: next } }); c.face = next; }
+    catch { try { s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: prev } }); } catch { return toast('Could not switch camera'); } }
+    const nt = s.getVideoTracks()[0];
+    const sd = c.pc.getSenders().find(x => x.track && x.track.kind === 'video' || x.track === null && x.dtmf === null);
+    if (sd) await sd.replaceTrack(nt).catch(() => {});
+    c.local.getVideoTracks().forEach(t => c.local.removeTrack(t));
+    c.local.addTrack(nt); U('lVid').srcObject = c.local;
+  };
+
+  /* ---------- call buttons in chats ---------- */
+  const hc = el('button', { className: 'iconbtn', id: 'hCall', textContent: '{{phone}}', onclick: () => AC.start(current, false) });
+  const hv = el('button', { className: 'iconbtn', id: 'hVid', textContent: '{{video}}', onclick: () => AC.start(current, true) });
+  $('menuBtn').before(hc, hv);
+  const _cc = chatChrome, _gc = groupChrome;
+  chatChrome = function(){ _cc(); hc.hidden = hv.hidden = false; };
+  groupChrome = function(){ _gc(); hc.hidden = hv.hidden = true; };
+
+  const _mc = $('menu').onclick;
+  $('menu').onclick = e => {
+    const b = e.target.closest('button');
+    if (b && b.dataset.a === 'call' && !curGroup){ $('menuWrap').hidden = true; AC.start(current, false); return; }
+    return _mc(e);
+  };
+  $('detCall').onclick = () => AC.start(current, false);
+  $('detVideo').onclick = () => AC.start(current, true);
+
+  /* ---------- Calls tab with history + deletion ---------- */
+  const card = $('cardCalls'); card.textContent = '';
+  const bar = el('div', { className: 'rchips', style: 'padding:12px 14px 4px;flex:none;align-items:center' });
+  const list = el('div', { style: 'flex:1;overflow-y:auto;min-height:0' });
+  const fab = el('button', { className: 'fab', id: 'callFab', textContent: '{{plus}}', onclick: () => openPicker() });
+  fab.setAttribute('aria-label', 'New call');
+  card.append(bar, list, fab);
+
+  const KEY = () => 'absol-calls:' + me.id;
+  const save = a => { try { localStorage.setItem(KEY(), JSON.stringify(a.slice(0, 100))); } catch {} };
+  function load(){
+    let a = []; try { a = JSON.parse(localStorage.getItem(KEY()) || '[]'); } catch {}
+    let ch = false; a.forEach((e, i) => { if (!e.id){ e.id = e.t + '-' + i; ch = true; } });
+    if (ch) save(a); return a;
+  }
+  const dur = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  let selMode = false, picked = new Set();
+
+  function delIds(ids){ save(load().filter(e => !ids.has(e.id))); picked = new Set(); selMode = false; AC.render(); }
+
+  AC.render = function(){
+    if (!me) return;
+    const a = load(); bar.textContent = ''; list.textContent = ''; fab.hidden = selMode;
+    if (!a.length){ selMode = false; fab.hidden = false; list.appendChild(el('div', { className: 'empty', textContent: 'No calls yet. Open a chat and tap the phone icon.' })); return; }
+    if (!selMode){
+      bar.append(chipBtn('{{check}} Select', () => { selMode = true; picked = new Set(); AC.render(); }),
+        chipBtn('{{trash}} Clear all', () => { if (confirm('Delete your entire call history on this device?')) delIds(new Set(a.map(e => e.id))); }));
+    } else {
+      bar.append(chipBtn('{{x}} Cancel', () => { selMode = false; picked = new Set(); AC.render(); }),
+        chipBtn(picked.size === a.length ? 'Select none' : 'Select all', () => { picked = picked.size === a.length ? new Set() : new Set(a.map(e => e.id)); AC.render(); }),
+        chipBtn('{{trash}} Delete (' + picked.size + ')', () => {
+          if (!picked.size) return toast('Select calls first');
+          if (confirm('Delete ' + picked.size + ' selected call' + (picked.size === 1 ? '' : 's') + '?')) delIds(new Set(picked));
+        }));
+    }
+    a.forEach(e => {
+      const label = { completed: dur(e.dur || 0), missed: 'Missed', declined: 'Declined', noanswer: 'No answer', busy: 'Busy', failed: 'Failed' }[e.status] || '';
+      const sub = el('span', { className: e.status === 'missed' ? 'miss' : '', textContent: (e.dir === 'out' ? 'Outgoing' : 'Incoming') + (e.video ? ' video' : ' voice') + ' · ' + label + ' · ' + fmtTime(new Date(e.t).toISOString()) });
+      const tx = el('div', { className: 'tx' }, el('b', { textContent: dname(e.peer) }), sub);
+      const row = el('div', { className: 'convo callrow' });
+      if (selMode){
+        const cb = el('input', { type: 'checkbox', checked: picked.has(e.id), style: 'width:auto;flex:none;pointer-events:none' });
+        row.append(cb, avatar((profiles[e.peer] || {}).username), tx);
+        row.onclick = () => { if (picked.has(e.id)) picked.delete(e.id); else picked.add(e.id); AC.render(); };
+      } else {
+        const call = el('button', { className: 'iconbtn', textContent: e.video ? '{{video}}' : '{{phone}}' });
+        call.onclick = ev => { ev.stopPropagation(); AC.start(e.peer, e.video); };
+        const del = el('button', { className: 'iconbtn', textContent: '{{trash}}' });
+        del.onclick = ev => { ev.stopPropagation(); delIds(new Set([e.id])); toast('Call deleted'); };
+        row.append(avatar((profiles[e.peer] || {}).username), tx, call, del);
+        row.onclick = () => openChat(e.peer);
+      }
+      list.appendChild(row);
+    });
+  };
+  AC.log = function(e){
+    if (!me) return;
+    e.id = e.t + '-' + Math.random().toString(36).slice(2, 7);
+    const a = load(); a.unshift(e); save(a); AC.render();
+  };
+
+  /* ---------- new call picker ---------- */
+  const plist = el('div', { className: 'plist' });
+  const inp = el('input', { placeholder: 'Or call by username', autocapitalize: 'off' });
+  const msg = el('div', { className: 'hint', style: 'color:var(--danger);margin-top:8px' });
+  const dlg = el('dialog', { id: 'callPick' },
+    el('h2', { textContent: 'New call' }), plist,
+    el('div', { className: 'row' }, inp),
+    el('div', { className: 'row', style: 'margin-top:8px' }, chipBtn('{{phone}} Voice', () => byName(false)), chipBtn('{{video}} Video', () => byName(true))),
+    msg,
+    el('div', { className: 'row', style: 'margin-top:8px' }, el('button', { className: 'ghost', textContent: 'Cancel', onclick: () => dlg.close() })));
+  document.body.appendChild(dlg);
+  const go = (id, v) => { dlg.close(); AC.start(id, v); };
+  const prow = id => el('div', { className: 'srow' },
+    el('div', { className: 'mr' }, avatar((profiles[id] || {}).username), el('div', { className: 'tx' }, el('b', { textContent: dname(id) }))),
+    el('div', { className: 'pr' }, chipBtn('{{phone}}', () => go(id, false)), chipBtn('{{video}}', () => go(id, true))));
+  async function byName(v){
+    const u = inp.value.trim().toLowerCase(); if (!u) return;
+    if (u === me.username){ msg.textContent = 'That’s you'; return; }
+    const { data } = await sb.from('profiles').select('*').eq('username', u).maybeSingle();
+    if (!data){ msg.textContent = 'User not found'; return; }
+    profiles[data.id] = data; go(data.id, v);
+  }
+  function openPicker(){
+    msg.textContent = ''; inp.value = ''; plist.textContent = '';
+    const ids = chatIds().filter(id => !st(id).blocked);
+    if (ids.length) ids.forEach(id => plist.appendChild(prow(id)));
+    else plist.appendChild(el('div', { className: 'empty', textContent: 'No chats yet. Enter a username below.' }));
+    dlg.showModal();
+  }
+
+  /* ---------- load history after login, clean up on logout ---------- */
+  let lastUid = null; const _rl = renderList;
+  renderList = function(){ _rl(); if (me && lastUid !== me.id){ lastUid = me.id; selMode = false; picked = new Set(); AC.render(); } };
+  const _lo = logout;
+  logout = async function(){ AC.unsubscribe(); lastUid = null; return _lo(); };
+  $('logoutBtn').onclick = logout;
+})();
+</script>
+<!-- ===== CALLS PART 2 END ===== -->
 </body>
 </html>
