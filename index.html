@@ -3003,5 +3003,127 @@ applyTheme(localStorage.getItem('absol-theme') || 'lavender');
 })();
 </script>
 <!-- ===== PATCH 2 PART 1B END ===== -->
+  <!-- ===== PATCH 2 PART 2A START (reply) ===== -->
+<style>
+.rq{border-left:3px solid rgba(0,0,0,.4);background:rgba(0,0,0,.18);border-radius:10px;padding:4px 8px;margin-bottom:6px;font-size:13px;cursor:pointer;overflow:hidden}
+.rq b{display:block;font-size:12px}
+.rq span{display:block;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fwdl{display:block;font-size:11px;opacity:.7;font-style:italic;margin-bottom:2px}
+#rbar{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--surface2);border-top:1px solid var(--border)}
+#rbar .rtx{flex:1;min-width:0;border-left:3px solid var(--accent);padding-left:10px}
+#rbar b{display:block;font-size:12px;color:var(--accent)}
+#rbar span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:13px}
+</style>
+<script>
+(function(){
+  const P2 = window.P2, U = id => document.getElementById(id);
+  P2.reply = null;
+
+  const bar = el('div', { id: 'rbar', hidden: true },
+    el('div', { className: 'rtx' }, el('b', { id: 'rbN' }), el('span', { id: 'rbT' })),
+    el('button', { className: 'ghost', textContent: '{{x}}', onclick: () => setReply(null) }));
+  U('composer').before(bar);
+
+  function setReply(r){
+    P2.reply = r; bar.hidden = !r;
+    if (r){
+      U('rbN').textContent = r.s === me.id ? 'You' : dname(r.s);
+      U('rbT').textContent = r.t;
+      U('msgInput').focus();
+    }
+  }
+
+  P2.menu.push({ order: 10, label: '{{reply}} Reply', show: c => !c.gone && c.t != null,
+    run: c => setReply({ s: c.m.sender_id, t: String(c.t).slice(0, 100), i: c.m.id }) });
+
+  P2.decor.push((b, m) => {
+    if (P2.isGone(m) || b.querySelector('.rq,.fwdl')) return;
+    if (m._fwd) b.prepend(el('span', { className: 'fwdl', textContent: '{{forward}} Forwarded' }));
+    const r = m._rep; if (!r) return;
+    b.prepend(el('div', { className: 'rq', onclick: e => {
+      e.stopPropagation();
+      const t = U('msgs').querySelector('.b[data-mid="' + String(r.i).replace(/"/g, '') + '"]');
+      if (!t) return toast('Original message is not loaded');
+      t.scrollIntoView({ block: 'center' }); t.classList.remove('flash'); void t.offsetWidth; t.classList.add('flash');
+    } }, el('b', { textContent: r.s === me.id ? 'You' : dname(r.s) }), el('span', { textContent: r.t })));
+  });
+
+  /* pack the reply into the text just before the original send runs */
+  const _send = send;
+  send = async function(){
+    const inp = U('msgInput'), raw = inp.value.trim();
+    if (!raw) return;
+    inp.value = P2.pack(raw, P2.reply);
+    await _send();
+    if (inp.value.startsWith(P2.PFX)){
+      try { const o = JSON.parse(inp.value.slice(P2.PFX.length)); inp.value = o.t; setReply(o.r || null); } catch {}
+    } else if (!inp.value) setReply(null);
+  };
+  U('sendBtn').onclick = send;
+
+  const _oc = openChat, _og = openGroup;
+  openChat = async function(id){ setReply(null); return _oc(id); };
+  openGroup = function(gid){ setReply(null); return _og(gid); };
+})();
+</script>
+<!-- ===== PATCH 2 PART 2A END ===== -->
+  <!-- ===== PATCH 2 PART 2B START (forward) ===== -->
+<script>
+(function(){
+  const P2 = window.P2;
+
+  async function fwdDM(peer, text){
+    await loadProfiles([peer]);
+    const packed = P2.pack(text, null, true), nonce = nacl.randomBytes(nacl.box.nonceLength);
+    const ct = nacl.box(nacl.util.decodeUTF8(packed), nonce, unb64(profiles[peer].public_key), me.sk);
+    const { data, error } = await sb.from('messages')
+      .insert({ sender_id: me.id, recipient_id: peer, ciphertext: b64(ct), nonce: b64(nonce) }).select().single();
+    if (error) throw error;
+    data._t = packed;
+    if (!msgs.some(x => x.id === data.id)) msgs.push(data);
+  }
+  async function fwdGroup(gid, text){
+    let g = groups[gid], K = g && gkeys[g.id + ':' + g.epoch];
+    if (!K){ await loadGroups(false); g = groups[gid]; K = g && gkeys[g.id + ':' + g.epoch]; }
+    if (!K) throw new Error('Group key not ready');
+    const packed = P2.pack(text, null, true), nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+    const ct = nacl.secretbox(nacl.util.decodeUTF8(packed), nonce, K);
+    const { data, error } = await sb.from('group_messages')
+      .insert({ group_id: gid, sender_id: me.id, epoch: g.epoch, ciphertext: b64(ct), nonce: b64(nonce) }).select().single();
+    if (error) throw error;
+    data._t = packed;
+    if (!gmsgs.some(x => x.id === data.id)) gmsgs.push(data);
+  }
+
+  const plist = el('div', { className: 'plist' });
+  const dlg = el('dialog', { id: 'fwdDlg' },
+    el('h2', { textContent: 'Forward to' }), plist,
+    el('div', { className: 'row', style: 'margin-top:8px' }, el('button', { className: 'ghost', textContent: 'Cancel', onclick: () => dlg.close() })));
+  document.body.appendChild(dlg);
+
+  function openForward(text){
+    plist.textContent = '';
+    const items = recentChats().filter(it => it.kind === 'g' || (!st(it.id).blocked && !st(it.id).locked));
+    if (!items.length) plist.append(el('div', { className: 'empty', textContent: 'No chats to forward to' }));
+    items.forEach(it => {
+      const nm = it.kind === 'u' ? dname(it.id) : groups[it.id].name;
+      plist.append(el('div', { className: 'srow' },
+        el('div', { className: 'mr' }, it.kind === 'u' ? avatar((profiles[it.id] || {}).username) : avatar(nm, 'grp'), el('div', { className: 'tx' }, el('b', { textContent: nm }))),
+        chipBtn('{{forward}} Send', async () => {
+          dlg.close();
+          try {
+            if (it.kind === 'u') await fwdDM(it.id, text); else await fwdGroup(it.id, text);
+            toast('Forwarded to ' + nm);
+            renderList(); if (!document.getElementById('chat').hidden) renderMsgs();
+          } catch (e) { toast('Could not forward: ' + friendly(e)); }
+        })));
+    });
+    dlg.showModal();
+  }
+
+  P2.menu.push({ order: 30, label: '{{forward}} Forward', show: c => !c.gone && c.t != null, run: c => openForward(String(c.t)) });
+})();
+</script>
+<!-- ===== PATCH 2 PART 2B END ===== -->
 </body>
 </html>
