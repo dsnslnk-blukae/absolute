@@ -3140,11 +3140,13 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
   document.addEventListener('contextmenu', e => { if (!ok(e.target)) e.preventDefault(); });
   document.addEventListener('selectstart', e => { if (!ok(e.target)) e.preventDefault(); });
 
-  /* 2) phone back button */
-  let leaving = false;
-  const trap = () => { try { history.pushState({ absol: 1 }, ''); } catch {} };
-  try { history.replaceState({ absol: 0 }, ''); } catch {}
-  trap();
+  /* 2) phone back button = go to previous screen */
+  const BUF = 30; let buf = 0, armed = false, leaving = false;
+  function arm(){
+    if (armed) return; armed = true;
+    try { for (let i = 0; i < BUF; i++) history.pushState({ absol: i + 1 }, ''); buf = BUF; } catch {}
+  }
+  ['pointerup', 'touchend', 'click'].forEach(ev => document.addEventListener(ev, arm, { capture: true, passive: true }));
 
   function goBack(){
     const call = window.AbsolCall && AbsolCall.cur && AbsolCall.cur();
@@ -3165,11 +3167,19 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
       default: return false;
     }
   }
+
   window.addEventListener('popstate', () => {
     if (leaving) return;
-    if (goBack()){ trap(); return; }
-    leaving = true; history.back();
-    setTimeout(() => { leaving = false; trap(); }, 400);
+    if (buf > 0) buf--;
+    if (goBack()){
+      try { history.pushState({ absol: 1 }, ''); buf++; } catch {}
+      return;
+    }
+    /* on the chat list (or login): leave the app */
+    leaving = true;
+    const n = buf + 1; buf = 0; armed = false;
+    history.go(-n);
+    setTimeout(() => { leaving = false; }, 600);
   });
 })();
 </script>
