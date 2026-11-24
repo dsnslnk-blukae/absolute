@@ -3196,5 +3196,159 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
 })();
 </script>
 <!-- ===== PATCH 2 TINY UPDATE END ===== -->
+  <!-- ===== PART 3 (merged: edit + live updates + delete for everyone) =====
+     Use this INSTEAD of both Part 3A and Part 3B. Paste it in the same place Part 3A was. -->
+<style>
+#ebar{display:flex;align-items:center;gap:10px;padding:8px 14px;background:var(--surface2);border-top:1px solid var(--border)}
+#ebar .rtx{flex:1;min-width:0;border-left:3px solid var(--accent);padding-left:10px}
+#ebar b{display:block;font-size:12px;color:var(--accent)}
+#ebar span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:13px}
+.edl{font-style:italic;opacity:.8}
+/* old "deleted" placeholders stay hidden (new deletes remove the message completely) */
+.b.hide-gone{display:none!important}
+.gm:has(.b.hide-gone){display:none}
+</style>
+<script>
+(function(){
+  const P2 = window.P2, U = id => document.getElementById(id);
+  P2.edit = null;
+
+  /* re-draw the open chat without jumping the scroll position */
+  function redraw(){
+    renderList();
+    if (!U('chat').hidden){
+      const bx = U('msgs'), top = bx.scrollTop, atEnd = bx.scrollHeight - top - bx.clientHeight < 40;
+      renderMsgs(); if (!atEnd) bx.scrollTop = top;
+    }
+  }
+
+  /* apply an edit that was saved in the database */
+  function applyUpd(kind, r){
+    if (!me || !r) return;
+    const m = (kind === 'group' ? gmsgs : msgs).find(x => String(x.id) === String(r.id));
+    if (!m) return;
+    ['ciphertext', 'nonce', 'edited_at', 'deleted_at'].forEach(k => { if (k in r) m[k] = r[k]; });
+    delete m._t; delete m._p; delete m._rep; delete m._fwd; delete m._del;
+    redraw();
+  }
+
+  /* a message was deleted for everyone: remove it from memory and the screen */
+  function removeLocal(kind, id){
+    const has = (kind === 'group' ? gmsgs : msgs).some(x => String(x.id) === String(id));
+    if (!has) return;
+    if (kind === 'group') gmsgs = gmsgs.filter(x => String(x.id) !== String(id));
+    else msgs = msgs.filter(x => String(x.id) !== String(id));
+    redraw();
+  }
+
+  /* encrypt text for a message and save changes to it */
+  P2.enc = async (m, kind, packed) => {
+    const data = nacl.util.decodeUTF8(packed);
+    if (kind === 'group'){
+      const K = gkeys[m.group_id + ':' + m.epoch]; if (!K) throw new Error('Group key not ready');
+      const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+      return { ciphertext: b64(nacl.secretbox(data, nonce, K)), nonce: b64(nonce) };
+    }
+    const peer = m.recipient_id; await loadProfiles([peer]);
+    const nonce = nacl.randomBytes(nacl.box.nonceLength);
+    return { ciphertext: b64(nacl.box(data, nonce, unb64(profiles[peer].public_key), me.sk)), nonce: b64(nonce) };
+  };
+  P2.push = async (m, kind, patch) => {
+    const { data, error } = await sb.from(kind === 'group' ? 'group_messages' : 'messages')
+      .update(patch).eq('id', m.id).select().single();
+    if (error) throw error;
+    applyUpd(kind, data);
+  };
+
+  /* live updates from the other person (edits and deletions) */
+  let ch = null, inited = null;
+  const appVisible = () => [...document.querySelectorAll('#app > section')].some(s => !s.hidden && s.id !== 'auth');
+  function live(){
+    if (ch) sb.removeChannel(ch);
+    ch = sb.channel('p2-live-' + me.id)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, p => applyUpd('dm', p.new))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'group_messages' }, p => applyUpd('group', p.new))
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, p => { if (p.old && p.old.id != null) removeLocal('dm', p.old.id); })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'group_messages' }, p => { if (p.old && p.old.id != null) removeLocal('group', p.old.id); })
+      .subscribe();
+  }
+  setInterval(() => {
+    if (me && appVisible() && inited !== me.id){ inited = me.id; live(); }
+    else if (!me && inited){ inited = null; if (ch){ sb.removeChannel(ch); ch = null; } }
+  }, 1000);
+
+  /* "edited" label */
+  P2.decor.push((b, m) => {
+    if (!m.edited_at || P2.isGone(m)) return;
+    const sm = b.querySelector('small'); if (!sm || sm.querySelector('.edl')) return;
+    sm.prepend(el('span', { className: 'edl', textContent: 'edited ' }));
+  });
+
+  /* hide any old "message deleted" placeholders completely */
+  P2.decor.push((b, m) => { if (P2.isGone(m)) b.classList.add('hide-gone'); });
+
+  /* edit bar above the message box */
+  const bar = el('div', { id: 'ebar', hidden: true },
+    el('div', { className: 'rtx' }, el('b', { textContent: 'Editing message' }), el('span', { id: 'ebT' })),
+    el('button', { className: 'ghost', textContent: '{{x}}', onclick: () => setEdit(null, true) }));
+  U('composer').before(bar);
+
+  function setEdit(e, clear){
+    const had = !!P2.edit; P2.edit = e; bar.hidden = !e;
+    if (e){
+      U('ebT').textContent = e.orig.slice(0, 100);
+      const rb = U('rbar'); if (rb) rb.hidden = true; P2.reply = null;
+    } else if (had && clear) U('msgInput').value = '';
+  }
+
+  P2.menu.push({ order: 15, label: '{{pencil}} Edit', show: c => c.mine && !c.gone && c.t != null,
+    run: c => {
+      setEdit({ kind: c.kind, id: c.m.id, orig: String(c.t) });
+      const inp = U('msgInput'); inp.value = String(c.t); inp.focus();
+    } });
+
+  /* delete for everyone: the message is removed completely, no placeholder */
+  async function delAll(c){
+    if (!confirm('Delete this message for everyone? This can’t be undone.')) return;
+    try {
+      const { data, error } = await sb.from(c.kind === 'group' ? 'group_messages' : 'messages')
+        .delete().eq('id', c.m.id).select();
+      if (error) throw error;
+      if (!data || !data.length) throw new Error('Not allowed. Run the delete-policy SQL in Supabase.');
+      removeLocal(c.kind === 'group' ? 'group' : 'dm', c.m.id);
+      toast('Deleted for everyone');
+    } catch (err) { toast('Could not delete: ' + friendly(err)); }
+  }
+  P2.menu.push({ order: 95, danger: true, label: '{{trash}} Delete for everyone',
+    show: c => c.mine && !c.gone, run: c => delAll(c) });
+
+  /* sending while editing saves the edit instead of a new message */
+  const _send = send;
+  send = async function(){
+    const e = P2.edit; if (!e) return _send();
+    const inp = U('msgInput'), t = inp.value.trim();
+    if (!t) return toast('Type the new text, or use Delete for everyone');
+    if (t === e.orig) return setEdit(null, true);
+    const m = (e.kind === 'group' ? gmsgs : msgs).find(x => x.id === e.id);
+    if (!m){ setEdit(null, true); return toast('Message not found'); }
+    U('sendBtn').disabled = true;
+    try {
+      const packed = P2.pack(t, m._rep, m._fwd);
+      await P2.push(m, e.kind, { ...(await P2.enc(m, e.kind, packed)), edited_at: new Date().toISOString() });
+      setEdit(null, true); toast('Message edited');
+    } catch (err) { toast('Could not edit: ' + friendly(err)); }
+    finally { U('sendBtn').disabled = false; }
+  };
+  U('sendBtn').onclick = send;
+
+  /* leaving the chat cancels the edit */
+  const _oc = openChat, _og = openGroup, _gl = goList;
+  openChat = async function(id){ setEdit(null, true); return _oc(id); };
+  openGroup = function(gid){ setEdit(null, true); return _og(gid); };
+  goList = function(){ setEdit(null, true); return _gl(); };
+})();
+</script>
+<!-- ===== PART 3 END ===== -->
+
 </body>
 </html>
