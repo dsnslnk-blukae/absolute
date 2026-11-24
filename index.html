@@ -2864,5 +2864,144 @@ applyTheme(localStorage.getItem('absol-theme') || 'lavender');
 })();
 </script>
 <!-- ===== BATCH A PART 1 END ===== -->
+  <!-- ===== PATCH 2 PART 1A START ===== -->
+<style>
+#msgs .b{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#mact{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.45)}
+.menu.mactm{top:auto;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+.b.gone{font-style:italic;opacity:.65}
+</style>
+<script>
+(function(){
+  const P2 = window.P2 = { PFX: '\u2063\u2063', GONE: 'This message was deleted', menu: [], decor: [], hides: new Set() };
+  const U = id => document.getElementById(id);
+
+  Object.assign(ICONS, {
+    reply: '<path d="M9 7L4 12l5 5"/><path d="M4 12h9a7 7 0 017 7"/>',
+    copy: '<rect x="8" y="8" width="12" height="12" rx="3"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/>',
+    forward: '<path d="M15 7l5 5-5 5"/><path d="M20 12h-9a7 7 0 00-7 7"/>'
+  });
+  const sprite = document.querySelector('body > svg[aria-hidden]');
+  if (sprite) ['reply','copy','forward'].forEach(k => sprite.insertAdjacentHTML('beforeend', `<symbol id="i-${k}" viewBox="0 0 24 24">${ICONS[k]}</symbol>`));
+
+  /* extra data (reply, forwarded, deleted) lives inside the encrypted text */
+  P2.pack = (t, rep, fwd) => (!rep && !fwd && !t.startsWith(P2.PFX)) ? t
+    : P2.PFX + JSON.stringify({ t, r: rep || undefined, f: fwd ? 1 : undefined });
+  P2.isGone = m => !!(m.deleted_at || m._del);
+  function unwrap(m, t){
+    if (t == null || m._p) return t;
+    m._p = 1;
+    if (typeof t === 'string' && t.startsWith(P2.PFX)){
+      try {
+        const o = JSON.parse(t.slice(P2.PFX.length));
+        m._rep = o.r || null; m._fwd = !!o.f; m._del = !!o.d;
+        m._t = o.d ? P2.GONE : String(o.t == null ? '' : o.t);
+      } catch {}
+    }
+    return m._t;
+  }
+  const _d = decrypt, _g = decryptG;
+  decrypt = m => m.deleted_at ? P2.GONE : unwrap(m, _d(m));
+  decryptG = m => m.deleted_at ? P2.GONE : unwrap(m, _g(m));
+
+  /* "delete for me" list */
+  const _v = visible, _gv = gvisible;
+  visible = m => _v(m) && !P2.hides.has('dm:' + m.id);
+  gvisible = m => _gv(m) && !P2.hides.has('group:' + m.id);
+  async function loadHides(){
+    const { data, error } = await sb.from('message_hides').select('kind,message_id');
+    if (error){ console.warn('[patch2] hides', error.message); return; }
+    P2.hides = new Set((data || []).map(r => r.kind + ':' + r.message_id));
+  }
+  let inited = null;
+  const appVisible = () => [...document.querySelectorAll('#app > section')].some(s => !s.hidden && s.id !== 'auth');
+  async function init(){
+    inited = me.id; await loadHides();
+    if (!me) return;
+    renderList(); if (!U('chat').hidden) renderMsgs();
+  }
+  setInterval(() => {
+    if (me && appVisible() && inited !== me.id) init().catch(e => console.warn('[patch2]', e));
+    else if (!me && inited){ inited = null; P2.hides = new Set(); }
+  }, 1000);
+})();
+</script>
+<!-- ===== PATCH 2 PART 1A END ===== -->
+  <!-- ===== PATCH 2 PART 1B START ===== -->
+<script>
+(function(){
+  const P2 = window.P2, U = id => document.getElementById(id);
+  let lastOpen = 0;
+
+  async function copyText(t){
+    try { await navigator.clipboard.writeText(t); toast('Copied'); }
+    catch {
+      const a = document.createElement('textarea'); a.value = t; a.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(a); a.select();
+      try { document.execCommand('copy'); toast('Copied'); } catch { toast('Copy failed'); }
+      a.remove();
+    }
+  }
+  async function delMe(c){
+    const { error } = await sb.from('message_hides').insert({ user_id: me.id, kind: c.kind, message_id: c.m.id });
+    if (error && error.code !== '23505') return toast('Could not delete: ' + friendly(error));
+    P2.hides.add(c.kind + ':' + c.m.id); renderList(); renderMsgs(); toast('Deleted for you');
+  }
+  P2.menu.push(
+    { order: 20, label: '{{copy}} Copy', show: c => !c.gone && c.t != null, run: c => copyText(c.t) },
+    { order: 90, label: '{{trash}} Delete for me', show: () => true, run: c => delMe(c) });
+
+  function openMenu(b){
+    lastOpen = Date.now();
+    const kind = curGroup ? 'group' : 'dm';
+    const m = (curGroup ? gmsgs : msgs).find(x => String(x.id) === b.dataset.mid);
+    if (!m || m.pending) return;
+    const t = curGroup ? decryptG(m) : decrypt(m);
+    const c = { kind, m, t, gone: P2.isGone(m), mine: m.sender_id === me.id };
+    const items = P2.menu.filter(i => i.show(c)).sort((a, z) => a.order - z.order);
+    if (!items.length) return;
+    const old = U('mact'); if (old) old.remove();
+    const wrap = el('div', { id: 'mact', onclick: e => { if (e.target === wrap && Date.now() - lastOpen > 500) wrap.remove(); } },
+      el('div', { className: 'menu mactm' }, ...items.map(i => el('button', {
+        className: i.danger ? 'danger' : '', textContent: i.label,
+        onclick: () => { if (Date.now() - lastOpen < 500) return; wrap.remove(); i.run(c); } }))));
+    document.body.appendChild(wrap);
+  }
+
+  /* long-press on a bubble */
+  const box = U('msgs'); let tm = 0, sx = 0, sy = 0, tb = null;
+  const target = e => { const b = e.target.closest && e.target.closest('.b'); return b && b.dataset.mid ? b : null; };
+  box.addEventListener('touchstart', e => {
+    const b = target(e); if (!b) return;
+    const t = e.touches[0]; sx = t.clientX; sy = t.clientY; tb = b;
+    clearTimeout(tm); tm = setTimeout(() => { if (navigator.vibrate) navigator.vibrate(15); openMenu(tb); }, 450);
+  }, { passive: true });
+  box.addEventListener('touchmove', e => {
+    const t = e.touches[0]; if (Math.abs(t.clientX - sx) > 8 || Math.abs(t.clientY - sy) > 8) clearTimeout(tm);
+  }, { passive: true });
+  ['touchend', 'touchcancel'].forEach(ev => box.addEventListener(ev, () => clearTimeout(tm), { passive: true }));
+  box.addEventListener('contextmenu', e => {
+    const b = target(e); if (!b) return;
+    e.preventDefault(); if (Date.now() - lastOpen > 700) openMenu(b);
+  });
+
+  /* decorate bubbles after every render (later parts add to P2.decor) */
+  const _rm = renderMsgs;
+  renderMsgs = function(){
+    _rm();
+    try {
+      const bx = U('msgs'), bottom = bx.scrollHeight - bx.scrollTop - bx.clientHeight < 6;
+      const arr = curGroup ? gmsgs : msgs, map = new Map(arr.map(m => [String(m.id), m]));
+      bx.querySelectorAll('.b').forEach(b => {
+        const m = map.get(b.dataset.mid); if (!m) return;
+        if (P2.isGone(m)) b.classList.add('gone');
+        P2.decor.forEach(f => f(b, m));
+      });
+      if (bottom) bx.scrollTop = bx.scrollHeight;
+    } catch (e) { console.warn('[patch2]', e); }
+  };
+})();
+</script>
+<!-- ===== PATCH 2 PART 1B END ===== -->
 </body>
 </html>
