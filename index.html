@@ -2659,5 +2659,36 @@ applyTheme(localStorage.getItem('absol-theme') || 'lavender');
 })();
 </script>
 <!-- ===== CALLS PART 2 END ===== -->
+  <!-- ===== DEBUG START (delete later) ===== -->
+<script>
+(function(){
+  const box = document.createElement('div');
+  box.style.cssText='position:fixed;left:0;right:0;top:0;max-height:38vh;overflow:auto;z-index:999;background:rgba(0,0,0,.88);color:#9f9;font:11px/1.35 monospace;padding:6px 8px;white-space:pre-wrap;pointer-events:none';
+  document.body.appendChild(box);
+  const log = (...a) => { box.textContent += a.map(x => typeof x === 'string' ? x : (x && x.message) || JSON.stringify(x)).join(' ') + '\n'; box.scrollTop = box.scrollHeight; };
+  window.addEventListener('error', e => log('ERROR', e.message));
+  window.addEventListener('unhandledrejection', e => log('REJECT', e.reason));
+  const w = console.warn; console.warn = (...a) => { log('WARN', ...a); w.apply(console, a); };
+  const f = window.fetch;
+  window.fetch = async (u, o) => {
+    const m = String(u).includes('metered.live');
+    try { const r = await f(u, o); if (m) log('TURN fetch status', r.status); return r; }
+    catch (e) { if (m) log('TURN fetch FAILED', e.message); throw e; }
+  };
+  const Orig = window.RTCPeerConnection;
+  window.RTCPeerConnection = function(cfg){
+    const pc = new Orig(cfg);
+    const s = (cfg.iceServers || []).map(x => [].concat(x.urls).join(',')).join(' | ');
+    log('PC created. servers:', (cfg.iceServers || []).length, s.includes('turn') ? '(TURN ok)' : '(NO TURN)');
+    pc.addEventListener('icecandidate', e => { if (e.candidate) log('cand', e.candidate.type || e.candidate.candidate.split(' ')[7]); else log('gathering done'); });
+    pc.addEventListener('icecandidateerror', e => log('ICE error', e.errorCode, e.errorText || '', e.url || ''));
+    pc.addEventListener('iceconnectionstatechange', () => log('ice:', pc.iceConnectionState));
+    pc.addEventListener('connectionstatechange', () => log('conn:', pc.connectionState));
+    return pc;
+  };
+  window.RTCPeerConnection.prototype = Orig.prototype;
+})();
+</script>
+<!-- ===== DEBUG END ===== -->
 </body>
 </html>
