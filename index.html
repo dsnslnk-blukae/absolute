@@ -3125,5 +3125,54 @@ applyTheme(localStorage.getItem('absol-theme') || 'lavender');
 })();
 </script>
 <!-- ===== PATCH 2 PART 2B END ===== -->
+<!-- ===== PATCH 2 TINY UPDATE START ===== -->
+<style>
+html,body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+.fp{-webkit-user-select:text;user-select:text}
+</style>
+<script>
+(function(){
+  const U = id => document.getElementById(id);
+
+  /* 1) no text selection / browser toolbar outside typing boxes */
+  const ok = t => { const n = t && (t.nodeType === 1 ? t : t.parentElement); return n && n.closest('input,textarea,.fp'); };
+  document.addEventListener('contextmenu', e => { if (!ok(e.target)) e.preventDefault(); });
+  document.addEventListener('selectstart', e => { if (!ok(e.target)) e.preventDefault(); });
+
+  /* 2) phone back button */
+  let leaving = false;
+  const trap = () => { try { history.pushState({ absol: 1 }, ''); } catch {} };
+  try { history.replaceState({ absol: 0 }, ''); } catch {}
+  trap();
+
+  function goBack(){
+    const call = window.AbsolCall && AbsolCall.cur && AbsolCall.cur();
+    if (call) return true;
+    const m = U('mact'); if (m){ m.remove(); return true; }
+    if (!U('menuWrap').hidden){ U('menuWrap').hidden = true; return true; }
+    const d = document.querySelector('dialog[open]');
+    if (d){ d.dispatchEvent(new Event('cancel', { cancelable: true })); if (d.open) d.close(); return true; }
+    const s = [...document.querySelectorAll('#app > section')].find(x => !x.hidden);
+    if (!s) return false;
+    switch (s.id){
+      case 'chat': if (!U('csearch').hidden) U('csClose').click(); else U('backBtn').click(); return true;
+      case 'details': U('detBack').click(); return true;
+      case 'ginfo': U('giBack').click(); return true;
+      case 'settings': U('setBack').click(); return true;
+      case 'profile': U('profBack').click(); return true;
+      case 'search': U('searchBack').click(); return true;
+      default: return false;
+    }
+  }
+  window.addEventListener('popstate', () => {
+    if (leaving) return;
+    if (goBack()){ trap(); return; }
+    leaving = true; history.back();
+    setTimeout(() => { leaving = false; trap(); }, 400);
+  });
+})();
+</script>
+<!-- ===== PATCH 2 TINY UPDATE END ===== -->
 </body>
 </html>
