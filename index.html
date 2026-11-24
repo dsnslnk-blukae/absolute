@@ -3140,46 +3140,58 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
   document.addEventListener('contextmenu', e => { if (!ok(e.target)) e.preventDefault(); });
   document.addEventListener('selectstart', e => { if (!ok(e.target)) e.preventDefault(); });
 
-  /* 2) phone back button = go to previous screen */
-  const BUF = 30; let buf = 0, armed = false, leaving = false;
-  function arm(){
-    if (armed) return; armed = true;
-    try { for (let i = 0; i < BUF; i++) history.pushState({ absol: i + 1 }, ''); buf = BUF; } catch {}
-  }
-  ['pointerup', 'touchend', 'click'].forEach(ev => document.addEventListener(ev, arm, { capture: true, passive: true }));
+  /* 2) phone back button: one history step per screen / overlay, added from your own taps */
+  const cur0 = [...document.querySelectorAll('#app > section')].find(s => !s.hidden);
+  let stk = [cur0 ? cur0.id : 'auth'], depth = 0, ignore = 0, tm = 0;
+  const key = n => n === 'settings' ? 'settings:' + (typeof sview !== 'undefined' ? sview : '') : n;
+  const ov = () => (U('mact') ? 1 : 0) + (U('menuWrap').hidden ? 0 : 1)
+    + document.querySelectorAll('dialog[open]').length + (U('callUI') && !U('callUI').hidden ? 1 : 0);
+  const want = () => (stk.length - 1) + ov();
+  const queue = () => { clearTimeout(tm); tm = setTimeout(sync, 0); };
 
-  function goBack(){
-    const call = window.AbsolCall && AbsolCall.cur && AbsolCall.cur();
-    if (call) return true;
-    const m = U('mact'); if (m){ m.remove(); return true; }
-    if (!U('menuWrap').hidden){ U('menuWrap').hidden = true; return true; }
-    const d = document.querySelector('dialog[open]');
-    if (d){ d.dispatchEvent(new Event('cancel', { cancelable: true })); if (d.open) d.close(); return true; }
+  function sync(){
+    const w = want();
+    while (depth < w){ try { history.pushState({ absol: depth + 1 }, ''); } catch {} depth++; }
+    if (w < depth){
+      const n = depth - w; depth = w; ignore++;
+      setTimeout(() => { ignore = 0; }, 800);
+      history.go(-n);
+    }
+  }
+
+  const _show = show;
+  show = function(name){
+    _show.apply(this, arguments);
+    const k = key(name);
+    if (name === 'auth' || name === 'list') stk = [k];
+    else { const i = stk.indexOf(k); if (i >= 0) stk = stk.slice(0, i + 1); else stk.push(k); }
+    queue();
+  };
+  new MutationObserver(queue).observe(document.body, { childList: true });
+  new MutationObserver(queue).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open', 'hidden'] });
+
+  function uiBack(){
+    if (window.AbsolCall && AbsolCall.cur && AbsolCall.cur()) return;
+    const m = U('mact'); if (m){ m.remove(); return; }
+    if (!U('menuWrap').hidden){ U('menuWrap').hidden = true; return; }
+    const ds = document.querySelectorAll('dialog[open]');
+    if (ds.length){ const d = ds[ds.length - 1]; d.dispatchEvent(new Event('cancel', { cancelable: true })); if (d.open) d.close(); return; }
     const s = [...document.querySelectorAll('#app > section')].find(x => !x.hidden);
-    if (!s) return false;
+    if (!s) return;
     switch (s.id){
-      case 'chat': if (!U('csearch').hidden) U('csClose').click(); else U('backBtn').click(); return true;
-      case 'details': U('detBack').click(); return true;
-      case 'ginfo': U('giBack').click(); return true;
-      case 'settings': U('setBack').click(); return true;
-      case 'profile': U('profBack').click(); return true;
-      case 'search': U('searchBack').click(); return true;
-      default: return false;
+      case 'chat': if (!U('csearch').hidden) U('csClose').click(); else U('backBtn').click(); break;
+      case 'details': U('detBack').click(); break;
+      case 'ginfo': U('giBack').click(); break;
+      case 'settings': U('setBack').click(); break;
+      case 'profile': U('profBack').click(); break;
+      case 'search': U('searchBack').click(); break;
     }
   }
-
   window.addEventListener('popstate', () => {
-    if (leaving) return;
-    if (buf > 0) buf--;
-    if (goBack()){
-      try { history.pushState({ absol: 1 }, ''); buf++; } catch {}
-      return;
-    }
-    /* on the chat list (or login): leave the app */
-    leaving = true;
-    const n = buf + 1; buf = 0; armed = false;
-    history.go(-n);
-    setTimeout(() => { leaving = false; }, 600);
+    if (ignore > 0){ ignore--; return; }
+    depth = Math.max(0, depth - 1);
+    uiBack();
+    queue();
   });
 })();
 </script>
