@@ -2659,5 +2659,210 @@ applyTheme(localStorage.getItem('absol-theme') || 'lavender');
 })();
 </script>
 <!-- ===== CALLS PART 2 END ===== -->
+  <!-- ===== BATCH A PART 1 START (unread, ticks, typing) ===== -->
+<style>
+.ub{margin-left:auto;flex:none;min-width:22px;padding:2px 7px;border-radius:12px;background:var(--accent);color:var(--accent-text);font-size:12px;font-weight:700;text-align:center}
+.convo.unr .tx span{color:var(--text);font-weight:700}
+.tk{margin-left:6px;font-size:11px;font-weight:700;letter-spacing:-2px;opacity:.5}
+.tk.rd{opacity:1}
+#chatSub.typ{color:var(--accent)}
+</style>
+<script>
+(function(){
+  const T = s => s ? +new Date(s) : 0;
+  let mine = {}, theirs = {}, gread = {}, typingAt = {};
+  let inited = null, rcOk = true, rcLoaded = false, baselined = false, rcCh = null, tyCh = null, lastSent = 0;
+  const pendR = {}, pendD = {};
+  const gKey = () => 'absol-gr:' + me.id;
+  const saveG = () => { try { localStorage.setItem(gKey(), JSON.stringify(gread)); } catch {} };
+  const appVisible = () => [...document.querySelectorAll('#app > section')].some(s => !s.hidden && s.id !== 'auth');
+  const latestFrom = p => { let x = 0; msgs.forEach(m => { if (m.sender_id === p && !m.pending) x = Math.max(x, T(m.created_at)); }); return x; };
+  const lastG = id => { let x = 0; gmsgs.forEach(m => { if (m.group_id === id && !m.pending) x = Math.max(x, T(m.created_at)); }); return x; };
+
+  function applyRow(r){
+    if (r.user_id === me.id) mine[r.peer_id] = { d: r.delivered_at, r: r.read_at };
+    else if (r.peer_id === me.id) theirs[r.user_id] = { d: r.delivered_at, r: r.read_at };
+  }
+  async function loadReceipts(){
+    const { data, error } = await sb.from('chat_receipts').select('*');
+    if (error){ rcOk = false; console.warn('[receipts]', error.message); return; }
+    mine = {}; theirs = {}; (data || []).forEach(applyRow);
+  }
+
+  /* ---------- unread counts ---------- */
+  function unreadU(id){
+    if (!rcOk || !rcLoaded || (!mine[id] && !baselined)) return 0;
+    const r = T((mine[id] || {}).r); let n = 0;
+    msgs.forEach(m => { if (m.sender_id === id && !m.pending && visible(m) && T(m.created_at) > r) n++; });
+    return n;
+  }
+  function ensureG(){
+    let ch = false;
+    Object.keys(groups).forEach(id => { if (!gread[id]){ gread[id] = new Date(Math.max(Date.now(), lastG(id))).toISOString(); ch = true; } });
+    if (ch) saveG();
+  }
+  function unreadG(id){
+    const r = T(gread[id]); let n = 0;
+    gmsgs.forEach(m => { if (m.group_id === id && m.sender_id !== me.id && !m.pending && gvisible(m) && T(m.created_at) > r) n++; });
+    return n;
+  }
+  function markGroupRead(id){
+    gread[id] = new Date(Math.max(Date.now(), lastG(id))).toISOString(); saveG(); renderList();
+  }
+  function markRead(peer){
+    if (!peer || !me || document.hidden || pendR[peer]) return;
+    pendR[peer] = setTimeout(async () => {
+      delete pendR[peer]; if (!me) return;
+      mine[peer] = { d: new Date().toISOString(), r: new Date(Math.max(Date.now(), latestFrom(peer))).toISOString() };
+      renderList();
+      const { error } = await sb.rpc('mark_chat', { p_peer: peer, p_read: true });
+      if (error) console.warn('[receipt]', error.message);
+    }, 400);
+  }
+  function markDelivered(peer){
+    if (!peer || !me || pendD[peer]) return;
+    pendD[peer] = setTimeout(async () => {
+      delete pendD[peer]; if (!me) return;
+      const { error } = await sb.rpc('mark_chat', { p_peer: peer, p_read: false });
+      if (error) console.warn('[receipt]', error.message);
+    }, 400);
+  }
+
+  /* ---------- chat list badges ---------- */
+  function decorateList(){
+    if (!me || inited !== me.id) return;
+    ensureG();
+    const rows = [...$('convos').querySelectorAll(':scope > .convo')];
+    if (!rows.length) return;
+    const last = {}, items = [];
+    msgs.filter(visible).forEach(m => last[otherId(m)] = m);
+    Object.keys(last).forEach(id => items.push({ kind: 'u', id, t: +new Date(last[id].created_at), fav: st(id).favorite ? 1 : 0 }));
+    Object.keys(groups).forEach(id => { const gm = lastGroupMsg(id); items.push({ kind: 'g', id, t: +new Date(gm ? gm.created_at : groups[id].created_at), fav: (gset[id] || {}).favorite ? 1 : 0 }); });
+    items.sort((a, b) => (b.fav - a.fav) || (b.t - a.t));
+    if (items.length !== rows.length) return;
+    items.forEach((it, i) => {
+      const n = it.kind === 'u' ? unreadU(it.id) : unreadG(it.id);
+      if (n > 0){ rows[i].classList.add('unr'); rows[i].append(el('span', { className: 'ub', textContent: n > 99 ? '99+' : String(n) })); }
+    });
+  }
+  const _rl = renderList;
+  renderList = function(){ _rl(); try { decorateList(); } catch (e) { console.warn('[batchA]', e); } };
+
+  /* ---------- ticks on my messages (one-to-one chats) ---------- */
+  function tickOf(m){
+    if (m.pending) return 'p';
+    if (!rcOk) return 's';
+    const t = theirs[otherId(m)], c = T(m.created_at);
+    if (t && T(t.r) >= c) return 'r';
+    if (t && T(t.d) >= c) return 'd';
+    return 's';
+  }
+  function decorateMsgs(){
+    if (curGroup || !current || $('chat').hidden) return;
+    const map = new Map(); msgs.forEach(m => { if (otherId(m) === current) map.set(String(m.id), m); });
+    $('msgs').querySelectorAll('.b.me').forEach(b => {
+      const m = map.get(b.dataset.mid), sm = b.querySelector('small'); if (!m || !sm) return;
+      const s = tickOf(m);
+      sm.append(el('span', { className: 'tk' + (s === 'r' ? ' rd' : ''), textContent: s === 's' ? '✓' : s === 'p' ? '…' : '✓✓' }));
+    });
+  }
+  const _rm = renderMsgs;
+  renderMsgs = function(){ _rm(); try { decorateMsgs(); } catch (e) { console.warn('[batchA]', e); } };
+
+  /* ---------- hooks: new messages, opening chats ---------- */
+  const _add = addMsg;
+  addMsg = function(m){
+    const isNew = !msgs.some(x => x.id === m.id);
+    _add(m);
+    if (isNew && me && m.sender_id !== me.id){
+      delete typingAt[m.sender_id]; refreshSub();
+      if (current === m.sender_id && !curGroup && !$('chat').hidden && !document.hidden) markRead(m.sender_id);
+      else markDelivered(m.sender_id);
+    }
+  };
+  const _ogm = onGroupMsg;
+  onGroupMsg = async function(m){
+    await _ogm(m);
+    if (me && curGroup === m.group_id && m.sender_id !== me.id && !$('chat').hidden && !document.hidden) markGroupRead(m.group_id);
+  };
+  const _oc = openChat;
+  openChat = async function(id){ await _oc(id); if (me && current === id && !curGroup && !$('chat').hidden) markRead(id); };
+  const _og = openGroup;
+  openGroup = function(gid){ _og(gid); if (me && curGroup === gid && !$('chat').hidden) markGroupRead(gid); };
+
+  /* ---------- typing indicator (one-to-one) ---------- */
+  const _cc = chatChrome;
+  chatChrome = function(){
+    _cc();
+    const s = $('chatSub'), on = current && !curGroup && Date.now() - (typingAt[current] || 0) < 3000;
+    if (on) s.textContent = 'typing…';
+    s.classList.toggle('typ', !!on);
+  };
+  function refreshSub(){ if (current && !curGroup && !$('chat').hidden) chatChrome(); }
+  function setupTyping(){
+    if (tyCh) sb.removeChannel(tyCh);
+    tyCh = sb.channel('absol-typing', { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        if (!me || !payload || payload.to !== me.id) return;
+        typingAt[payload.from] = Date.now(); refreshSub(); setTimeout(refreshSub, 3200);
+      }).subscribe();
+  }
+  $('msgInput').addEventListener('input', () => {
+    if (!me || !tyCh || !current || curGroup || !$('msgInput').value || st(current).blocked) return;
+    const n = Date.now(); if (n - lastSent < 2500) return; lastSent = n;
+    tyCh.send({ type: 'broadcast', event: 'typing', payload: { from: me.id, to: current } });
+  });
+
+  /* ---------- live receipts ---------- */
+  function subscribeRc(){
+    if (rcCh) sb.removeChannel(rcCh);
+    rcCh = sb.channel('receipts-' + me.id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_receipts' }, p => {
+        const r = p.new; if (!me || !r || !r.user_id) return;
+        applyRow(r); renderList();
+        if (r.user_id === current && !curGroup && !$('chat').hidden) renderMsgs();
+      }).subscribe();
+  }
+  document.addEventListener('visibilitychange', async () => {
+    if (document.hidden || !me || inited !== me.id) return;
+    if (rcOk){ await loadReceipts(); renderList(); if (current && !curGroup && !$('chat').hidden) renderMsgs(); }
+    if (!$('chat').hidden){ if (curGroup) markGroupRead(curGroup); else if (current) markRead(current); }
+  });
+
+  /* ---------- start-up (runs once after login) ---------- */
+  async function init(){
+    const uid = me.id; inited = uid; rcOk = true;
+    await loadReceipts(); if (!me || me.id !== uid) return;
+    rcLoaded = true;
+    try { gread = JSON.parse(localStorage.getItem(gKey()) || '{}'); } catch { gread = {}; }
+    if (rcOk){
+      const jobs = [];
+      [...new Set(msgs.filter(m => m.sender_id !== me.id).map(m => m.sender_id))].forEach(p => {
+        const row = mine[p];
+        if (!row) jobs.push(sb.rpc('mark_chat', { p_peer: p, p_read: true }));
+        else if (T(row.d) < latestFrom(p)) jobs.push(sb.rpc('mark_chat', { p_peer: p, p_read: false }));
+      });
+      if (jobs.length){
+        const res = await Promise.all(jobs); if (!me || me.id !== uid) return;
+        if (res.some(x => x && x.error)) rcOk = false; else await loadReceipts();
+      }
+    }
+    if (!me || me.id !== uid) return;
+    baselined = true; subscribeRc(); setupTyping(); renderList();
+    if (current && !$('chat').hidden){ renderMsgs(); chatChrome(); }
+  }
+  function cleanup(){
+    if (rcCh){ sb.removeChannel(rcCh); rcCh = null; }
+    if (tyCh){ sb.removeChannel(tyCh); tyCh = null; }
+    mine = {}; theirs = {}; gread = {}; typingAt = {};
+    inited = null; rcOk = true; rcLoaded = false; baselined = false;
+  }
+  setInterval(() => {
+    if (me && appVisible() && inited !== me.id) init().catch(e => console.warn('[batchA]', e));
+    else if (!me && inited) cleanup();
+  }, 1000);
+})();
+</script>
+<!-- ===== BATCH A PART 1 END ===== -->
 </body>
 </html>
