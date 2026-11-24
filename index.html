@@ -2420,7 +2420,7 @@ applyTheme(localStorage.getItem('absol-theme') || 'lavender');
         await call.pc.setRemoteDescription({ type: 'offer', sdp: d.sdp }); await flush();
         if (vt){ call.local.addTrack(vt); call.pc.addTrack(vt, call.local); }
         const a = await call.pc.createAnswer(); await call.pc.setLocalDescription(a);
-        await sig('reanswer', call.peer, call.id, {}); call.video = true; refreshVid();
+        await sig('reanswer', call.peer, call.id, { sdp: a.sdp }); call.video = true; refreshVid();
       } catch { toast('Could not switch to video'); }
     } else if (k === 'reanswer'){
       if (mine && call.pc) try { await call.pc.setRemoteDescription({ type: 'answer', sdp: d.sdp }); } catch {}
