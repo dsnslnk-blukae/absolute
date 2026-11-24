@@ -3349,6 +3349,266 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
 })();
 </script>
 <!-- ===== PART 3 END ===== -->
+<!-- ===== ABSOL MEDIA SHARING v2 =====
+     1) DELETE the old media block: everything from the comment "ABSOL MEDIA SHARING" down to "END MEDIA SHARING".
+     2) Paste this at the very bottom of your HTML, after PART 3 and before </body>.
+     Run the small SQL first (removes the bucket size cap). -->
+<style>
+#plusBtn{width:48px;height:48px;padding:0;flex:none;border-radius:22px;overflow:hidden;transition:opacity .2s,width .2s,margin .2s,transform .2s}
+#plusBtn.off{opacity:0;width:0;margin-left:-8px;transform:scale(.6);pointer-events:none}
+#attSheet .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:6px}
+#attSheet .act .i,.att .i{width:26px;height:26px;margin:0}
+.att{display:flex;align-items:center;gap:10px;min-width:190px;max-width:100%;cursor:pointer}
+.att .ai{width:42px;height:42px;border-radius:14px;background:rgba(0,0,0,.18);display:grid;place-items:center;flex:none}
+.att .tx{min-width:0;flex:1}
+.att b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px}
+.att .as{display:block;font-size:12px;opacity:.7}
+.att audio{width:100%;max-width:240px}
+.att .chip{padding:6px 10px;font-size:12px}
+.mm img{display:block;width:min(62vw,260px);min-height:120px;max-height:320px;object-fit:cover;border-radius:16px;background:rgba(0,0,0,.2);cursor:pointer}
+#mview{width:96vw;max-width:640px;padding:10px;background:#000}
+#mview img,#mview video{display:block;width:100%;max-height:78vh;object-fit:contain}
+#ldPop{position:fixed;inset:0;z-index:95;display:grid;place-items:center;background:rgba(0,0,0,.45)}
+#ldPop div{background:var(--surface2);color:var(--text);padding:18px 26px;border-radius:26px;font-weight:700;text-align:center}
+</style>
+<script>
+(function(){
+  const U = id => document.getElementById(id), P2 = window.P2;
+  const BUCKET = 'chat-media', MARK = '\u2064';
 
+  /* icons */
+  Object.assign(ICONS, {
+    doc: '<path d="M7 3h7l5 5v11a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z"/><path d="M14 3v5h5"/>',
+    music: '<path d="M9 18V6l10-2v12"/><circle cx="7" cy="18" r="2.5"/><circle cx="17" cy="16" r="2.5"/>'
+  });
+  const sprite = document.querySelector('body > svg[aria-hidden]');
+  if (sprite) ['doc', 'music'].forEach(k => sprite.insertAdjacentHTML('beforeend', `<symbol id="i-${k}" viewBox="0 0 24 24">${ICONS[k]}</symbol>`));
+
+  const fmt = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+  const label = (ty, n) => ty === 'image' ? 'Photo' : ty === 'video' ? 'Video' : ty === 'audio' ? 'Audio' : ty === 'contact' ? 'Contact: ' + n : 'Document: ' + n;
+
+  /* loading popup */
+  const ld = el('div', { id: 'ldPop', hidden: true }, el('div'));
+  document.body.appendChild(ld);
+  const pop = t => { ld.firstChild.textContent = t; ld.hidden = false; };
+  const unpop = () => { ld.hidden = true; };
+  const paint = () => new Promise(r => setTimeout(r, 80));
+
+  /* ---------- read the attachment info out of a message ---------- */
+  function attOf(m){
+    if (m._att !== undefined) return m._att;
+    const t = m._t; if (typeof t !== 'string' || t.charCodeAt(0) !== 0x2064) return null;
+    let a = null;
+    try {
+      let pt;
+      if (m.group_id) pt = nacl.secretbox.open(unb64(m.ciphertext), unb64(m.nonce), gkeys[m.group_id + ':' + m.epoch]);
+      else pt = nacl.box.open(unb64(m.ciphertext), unb64(m.nonce), unb64(profiles[otherId(m)].public_key), me.sk);
+      const s = pt && nacl.util.encodeUTF8(pt);
+      if (s && s.startsWith(P2.PFX)) a = JSON.parse(s.slice(P2.PFX.length)).a || null;
+    } catch {}
+    return (m._att = a);
+  }
+
+  /* ---------- download + decrypt (cached) ---------- */
+  const blobs = {};
+  const getBlob = a => blobs[a.p] || (blobs[a.p] = (async () => {
+    const { data, error } = await sb.storage.from(BUCKET).download(a.p);
+    if (error) throw error;
+    const buf = new Uint8Array(await data.arrayBuffer());
+    const pt = nacl.secretbox.open(buf.subarray(24), buf.subarray(0, 24), unb64(a.k));
+    if (!pt) throw new Error('Could not decrypt the file');
+    return URL.createObjectURL(new Blob([pt], { type: a.m || 'application/octet-stream' }));
+  })().catch(e => { delete blobs[a.p]; throw e; }));
+  function save(u, name){
+    const a = document.createElement('a'); a.href = u; a.download = name || 'file';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  /* ---------- full-screen viewer ---------- */
+  const vd = el('dialog', { id: 'mview' }); document.body.appendChild(vd);
+  vd.addEventListener('close', () => vd.replaceChildren());
+  async function view(a, url){
+    const u = url || await getBlob(a);
+    vd.replaceChildren(
+      a.ty === 'video' ? el('video', { src: u, controls: true, autoplay: true, playsInline: true }) : el('img', { src: u }),
+      el('div', { className: 'row', style: 'margin-top:8px' },
+        el('button', { className: 'ghost', textContent: 'Close', onclick: () => vd.close() }),
+        el('button', { className: 'ghost', textContent: 'Save', onclick: () => save(u, a.n) })));
+    vd.showModal();
+  }
+
+  /* ---------- how an attachment looks inside a bubble ---------- */
+  function node(a){
+    if (a.ty === 'image'){
+      const img = el('img', { alt: a.n || 'Photo' }), w = el('div', { className: 'mm' }, img);
+      getBlob(a).then(u => { img.src = u; }).catch(() => w.replaceChildren(el('span', { textContent: 'Photo unavailable' })));
+      img.onclick = () => view(a).catch(e => toast('Could not open: ' + friendly(e)));
+      return w;
+    }
+    if (a.ty === 'contact'){
+      return el('div', { className: 'att' },
+        el('div', { className: 'ai', textContent: '{{user}}' }),
+        el('div', { className: 'tx' }, el('b', { textContent: a.n || 'Contact' }), el('span', { className: 'as', textContent: a.ph || 'No number' })),
+        a.ph ? chipBtn('Call', e => { e.stopPropagation(); location.href = 'tel:' + a.ph.replace(/[^\d+]/g, ''); }) : '',
+        a.ph ? chipBtn('Copy', async e => { e.stopPropagation(); try { await navigator.clipboard.writeText(a.ph); toast('Number copied'); } catch { toast('Copy failed'); } }) : '');
+    }
+    const ic = a.ty === 'video' ? 'video' : a.ty === 'audio' ? 'music' : 'doc';
+    const row = el('div', { className: 'att' },
+      el('div', { className: 'ai', textContent: '{{' + ic + '}}' }),
+      el('div', { className: 'tx' }, el('b', { textContent: a.n || 'File' }),
+        el('span', { className: 'as', textContent: fmt(a.s || 0) + ' · tap to ' + (a.ty === 'doc' ? 'download' : 'play') })));
+    row.onclick = async () => {
+      try {
+        pop('Decrypting your file… 😀'); await paint();
+        const u = await getBlob(a); unpop();
+        if (a.ty === 'video') await view(a, u);
+        else if (a.ty === 'audio'){ row.onclick = null; row.replaceChildren(el('audio', { controls: true, src: u, autoplay: true })); }
+        else save(u, a.n);
+      } catch (e) { unpop(); toast('Could not open file: ' + friendly(e)); }
+    };
+    return row;
+  }
+  P2.decor.push((b, m) => {
+    if (b.querySelector('.att,.mm')) return;
+    const a = attOf(m); if (!a) return;
+    const tx = [...b.children].find(c => c.tagName === 'SPAN' && !c.classList.contains('fwdl')); if (!tx) return;
+    tx.replaceWith(node(a));
+  });
+  /* no Edit / Copy / Forward for attachments (they would only touch the label) */
+  P2.menu.forEach(it => { if (/(Edit|Copy|Forward)$/.test(it.label)){ const s = it.show; it.show = c => !attOf(c.m) && s(c); } });
+
+  /* ---------- delete for everyone: also removes the stored file ---------- */
+  function dropLocal(kind, id){
+    if (kind === 'group') gmsgs = gmsgs.filter(x => String(x.id) !== String(id));
+    else msgs = msgs.filter(x => String(x.id) !== String(id));
+    renderList();
+    if (!U('chat').hidden){
+      const bx = U('msgs'), top = bx.scrollTop, atEnd = bx.scrollHeight - top - bx.clientHeight < 40;
+      renderMsgs(); if (!atEnd) bx.scrollTop = top;
+    }
+  }
+  const del = P2.menu.find(i => /Delete for everyone$/.test(i.label));
+  if (del) del.run = async c => {
+    if (!confirm('Delete this message for everyone? This can’t be undone.')) return;
+    try {
+      const att = attOf(c.m);
+      const { data, error } = await sb.from(c.kind === 'group' ? 'group_messages' : 'messages').delete().eq('id', c.m.id).select();
+      if (error) throw error;
+      if (!data || !data.length) throw new Error('Not allowed. Run the delete-policy SQL in Supabase.');
+      if (att && att.p){
+        const r = await sb.storage.from(BUCKET).remove([att.p]);
+        if (r.error) console.warn('[media] file not removed', r.error.message);
+        delete blobs[att.p];
+      }
+      dropLocal(c.kind, c.m.id); toast('Deleted for everyone');
+    } catch (err) { toast('Could not delete: ' + friendly(err)); }
+  };
+  /* clearing a whole chat also removes the files you sent in it */
+  const _clear = clearChat;
+  clearChat = async function(id){
+    const paths = [];
+    msgs.forEach(m => { if (otherId(m) === id && m.sender_id === me.id && !m.pending){ decrypt(m); const a = attOf(m); if (a && a.p) paths.push(a.p); } });
+    const ok = await _clear(id);
+    if (ok && paths.length) sb.storage.from(BUCKET).remove(paths).then(() => {}, () => {});
+    return ok;
+  };
+
+  /* ---------- sending ---------- */
+  const tgt = () => curGroup ? { kind: 'group', id: curGroup } : (current ? { kind: 'dm', id: current } : null);
+  async function deliver(t, att, text){
+    const packed = P2.PFX + JSON.stringify({ t: MARK + text, a: att }), data = nacl.util.decodeUTF8(packed);
+    let row, arr;
+    if (t.kind === 'group'){
+      let g = groups[t.id], K = g && gkeys[g.id + ':' + g.epoch];
+      if (!K){ await loadGroups(false); g = groups[t.id]; K = g && gkeys[g.id + ':' + g.epoch]; }
+      if (!K) throw new Error('Group key not ready');
+      const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+      const r = await sb.from('group_messages').insert({ group_id: t.id, sender_id: me.id, epoch: g.epoch, ciphertext: b64(nacl.secretbox(data, nonce, K)), nonce: b64(nonce) }).select().single();
+      if (r.error) throw r.error; row = r.data; arr = gmsgs;
+    } else {
+      await loadProfiles([t.id]);
+      const nonce = nacl.randomBytes(nacl.box.nonceLength);
+      const r = await sb.from('messages').insert({ sender_id: me.id, recipient_id: t.id, ciphertext: b64(nacl.box(data, nonce, unb64(profiles[t.id].public_key), me.sk)), nonce: b64(nonce) }).select().single();
+      if (r.error) throw r.error; row = r.data; arr = msgs;
+    }
+    let ex = arr.find(x => x.id === row.id);
+    if (!ex){ row._t = packed; arr.push(row); ex = row; }
+    ex._att = att;
+    renderList(); if (!U('chat').hidden) renderMsgs();
+  }
+  async function shrink(f){
+    const img = await loadImage(f), w = img.width || img.naturalWidth, h = img.height || img.naturalHeight, s = Math.min(1, 1600 / Math.max(w, h));
+    const c = document.createElement('canvas'); c.width = Math.round(w * s); c.height = Math.round(h * s);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return new Promise(r => c.toBlob(r, 'image/jpeg', .82));
+  }
+  async function sendFile(f, ty){
+    const t = tgt(); if (!t) return;
+    if (t.kind === 'dm' && st(t.id).blocked) return toast('Unblock this user first');
+    plus.disabled = true; pop('Encrypting your file… 😀');
+    try {
+      await paint();   /* let the popup appear before the heavy work starts */
+      let blob = f, mime = f.type || 'application/octet-stream', name = f.name || 'file';
+      if (ty === 'image' && /^image\/(jpeg|png|webp)$/.test(mime)){ blob = await shrink(f); mime = 'image/jpeg'; name = name.replace(/\.\w+$/, '') + '.jpg'; }
+      const buf = new Uint8Array(await blob.arrayBuffer()), key = nacl.randomBytes(32), nonce = nacl.randomBytes(24);
+      const box = nacl.secretbox(buf, nonce, key);
+      pop('Sending… 😀');
+      const path = me.id + '/' + crypto.randomUUID();
+      const { error } = await sb.storage.from(BUCKET).upload(path, new Blob([nonce, box]), { contentType: 'application/octet-stream' });
+      if (error) throw error;
+      await deliver(t, { ty, p: path, k: b64(key), m: mime, n: name, s: buf.length }, label(ty, name));
+    } catch (e) {
+      const msg = friendly(e);
+      toast(/exceed|too large|maximum|payload|413/i.test(msg) ? 'Your Supabase storage rejected this file: it is over its upload size limit' : 'Could not send: ' + msg);
+    }
+    finally { unpop(); plus.disabled = false; }
+  }
+  async function sendContact(){
+    dlg.close();
+    const t = tgt(); if (!t) return;
+    let name, phone;
+    try {
+      if (navigator.contacts && navigator.contacts.select){
+        const r = await navigator.contacts.select(['name', 'tel'], { multiple: false });
+        if (!r || !r.length) return;
+        name = (r[0].name || [])[0]; phone = (r[0].tel || [])[0];
+      }
+    } catch (e) { if (e && e.name === 'AbortError') return; }
+    if (!name && !phone){
+      name = prompt('Contact name'); if (name === null) return;
+      phone = prompt('Phone number'); if (phone === null) return;
+    }
+    name = (name || phone || 'Contact').trim().slice(0, 60); phone = (phone || '').trim().slice(0, 30);
+    try { await deliver(t, { ty: 'contact', n: name, ph: phone }, label('contact', name)); toast('Contact sent'); }
+    catch (e) { toast('Could not send: ' + friendly(e)); }
+  }
+
+  /* ---------- picker sheet ---------- */
+  const fi = el('input', { type: 'file', hidden: true }); document.body.appendChild(fi);
+  function pick(accept, ty){
+    dlg.close(); fi.accept = accept;
+    fi.onchange = async () => { const f = fi.files[0]; fi.value = ''; if (f) await sendFile(f, ty); };
+    fi.click();
+  }
+  const opt = (ic, text, fn) => el('button', { className: 'act', onclick: fn }, el('span', { textContent: '{{' + ic + '}}' }), text);
+  const dlg = el('dialog', { id: 'attSheet' }, el('h2', { textContent: 'Share' }),
+    el('div', { className: 'grid' },
+      opt('doc', 'Document', () => pick('*/*', 'doc')), opt('music', 'Audio', () => pick('audio/*', 'audio')),
+      opt('video', 'Video', () => pick('video/*', 'video')), opt('image', 'Image', () => pick('image/*', 'image')),
+      opt('user', 'Contact', sendContact)),
+    el('div', { className: 'row', style: 'margin-top:10px' }, el('button', { className: 'ghost', textContent: 'Cancel', onclick: () => dlg.close() })));
+  document.body.appendChild(dlg);
+
+  /* ---------- plus button: fades away while typing ---------- */
+  const plus = el('button', { className: 'iconbtn', id: 'plusBtn', textContent: '{{plus}}',
+    onclick: () => { if (!U('msgInput').value) dlg.showModal(); } });
+  plus.setAttribute('aria-label', 'Attach');
+  U('composer').prepend(plus);
+  const sync = () => plus.classList.toggle('off', !!U('msgInput').value);
+  U('msgInput').addEventListener('input', sync);
+  setInterval(sync, 300);
+})();
+</script>
+<!-- ===== END MEDIA SHARING ===== -->
 </body>
 </html>
