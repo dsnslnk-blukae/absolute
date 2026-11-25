@@ -4749,6 +4749,207 @@ dialog h2{font-size:17px;font-weight:800}
 })();
 </script>
 <!-- ===== END ABSOL SETTINGS PATCH 1 ===== -->
+  <!-- ===== ABSOL SETTINGS PATCH 2: Privacy =====-->
+<style>
+#pmHint{display:none}
+body.pm #pmHint{display:block}
+body.pm #newUser,body.pm #newGo,body.pm #pickUser,body.pm #pickAdd{display:none}
+</style>
+<script>
+(function(){
+  const SX = window.SX, P2 = window.P2;
+  if (!SX || !P2){ console.warn('[patch2] needs Patch 1 and the earlier blocks above it'); return; }
+  Object.assign(SX.defs, { typ: true, hp: false, pm: false, pmok: [], dis: {} });
+
+  ICONS.timer = '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 3h6"/>';
+  const sprite = document.querySelector('body > svg[aria-hidden]');
+  if (sprite) sprite.insertAdjacentHTML('beforeend', '<symbol id="i-timer" viewBox="0 0 24 24">' + ICONS.timer + '</symbol>');
+
+  /* ---------- cached state (SX.get reads storage, so keep hot values in memory) ---------- */
+  let pmOn = null, okSet = null;
+  function loadState(){
+    pmOn = !!SX.get('pm'); okSet = new Set(SX.get('pmok') || []);
+    document.body.classList.toggle('pm', pmOn);
+  }
+  const pm = () => { if (pmOn === null && me) loadState(); return !!pmOn; };
+
+  /* ---------- 1) typing indicator on/off (also hides theirs when you turn it off) ---------- */
+  const _ch = sb.channel.bind(sb);
+  sb.channel = function(name, opts){
+    const c = _ch(name, opts);
+    if (name === 'absol-typing'){
+      const send = c.send.bind(c), on = c.on.bind(c);
+      c.send = (...a) => SX.get('typ') ? send(...a) : Promise.resolve('ok');
+      c.on = (t, f, cb) => (t === 'broadcast' && f && f.event === 'typing') ? on(t, f, p => { if (SX.get('typ')) cb(p); }) : on(t, f, cb);
+    }
+    return c;
+  };
+
+  /* ---------- 2) read receipts: green dot only if both people allow it ---------- */
+  const _rm = renderMsgs;
+  renderMsgs = function(){
+    _rm();
+    try {
+      if (curGroup || !current) return;
+      const mine = (profiles[me.id] || {}).read_receipts !== false, theirs = (profiles[current] || {}).read_receipts !== false;
+      if (mine && theirs) return;
+      $('msgs').querySelectorAll('.tk.dot.read').forEach(t => t.classList.remove('read'));
+    } catch {}
+  };
+
+  /* ---------- 3) hide message previews in the chat list ---------- */
+  const _rl = renderList;
+  renderList = function(){
+    _rl();
+    try { if (SX.get('hp')) $('convos').querySelectorAll(':scope > .convo .tx > span').forEach(s => { s.textContent = 'Message hidden'; }); } catch {}
+  };
+
+  /* ---------- 4) disappearing messages (text messages) ---------- */
+  const OPTS = [[0, 'Off'], [3600, '1 hour'], [86400, '1 day'], [604800, '1 week']];
+  const optLabel = s => (OPTS.find(o => o[0] === s) || OPTS[0])[1];
+  const secs = () => { const k = curGroup || current; return k ? ((SX.get('dis') || {})[k] || 0) : 0; };
+  /* the expiry time travels inside the encrypted message */
+  const _pk = P2.pack;
+  P2.pack = function(t, rep, fwd){
+    const s = secs();
+    if (!s || fwd) return _pk(t, rep, fwd);
+    return P2.PFX + JSON.stringify({ t, r: rep || undefined, x: Date.now() + s * 1000 });
+  };
+  const shk = {};
+  const shared = pub => { const k = me.id + pub; return shk[k] || (shk[k] = nacl.box.before(unb64(pub), me.sk)); };
+  function xOf(m){
+    if (m._x !== undefined) return m._x;
+    if (!m.ciphertext) return null;
+    let pt = null;
+    try {
+      if (m.group_id){ const K = gkeys[m.group_id + ':' + m.epoch]; if (!K) return null; pt = nacl.secretbox.open(unb64(m.ciphertext), unb64(m.nonce), K); }
+      else { const o = profiles[otherId(m)]; if (!o) return null; pt = nacl.box.open.after(unb64(m.ciphertext), unb64(m.nonce), shared(o.public_key)); }
+    } catch { return null; }
+    if (!pt) return (m._x = null);
+    let x = null;
+    if (pt[0] === 0xe2 && pt[1] === 0x81 && pt[2] === 0xa3){
+      try { x = JSON.parse(nacl.util.encodeUTF8(pt).slice(P2.PFX.length)).x || null; } catch {}
+    }
+    return (m._x = x);
+  }
+  const expired = m => { const x = xOf(m); return !!x && Date.now() > x; };
+  const okIds = () => { pm(); return okSet || new Set(); };
+  const _v = visible, _gv = gvisible;
+  visible = m => _v(m) && !expired(m) && !(pm() && m.sender_id !== me.id && !okIds().has(m.sender_id));
+  gvisible = m => _gv(m) && !expired(m);
+
+  const gone = new Set();
+  function sweep(){
+    if (!me) return;
+    const now = Date.now(); let changed = false; const dm = [], gr = [];
+    msgs.forEach(m => { if (m.pending || gone.has('d' + m.id)) return; const x = xOf(m); if (x && now > x){ gone.add('d' + m.id); changed = true; if (m.sender_id === me.id) dm.push(m.id); } });
+    gmsgs.forEach(m => { if (m.pending || gone.has('g' + m.id)) return; const x = xOf(m); if (x && now > x){ gone.add('g' + m.id); changed = true; if (m.sender_id === me.id) gr.push(m.id); } });
+    if (changed){ renderList(); if (!$('chat').hidden) renderMsgs(); }
+    /* the sender's app removes the stored row; the other side's app hides it at the same time */
+    if (dm.length) sb.from('messages').delete().in('id', dm).then(() => {}, () => {});
+    if (gr.length) sb.from('group_messages').delete().in('id', gr).then(() => {}, () => {});
+  }
+  setInterval(sweep, 15000);
+
+  const mBtn = el('button', { id: 'mDis', textContent: '{{timer}} Disappearing messages' });
+  mBtn.dataset.a = 'disap';
+  $('menu').insertBefore(mBtn, $('menu').querySelector('[data-a=clear]'));
+  const _mm = menuMode;
+  menuMode = function(){ _mm(); mBtn.hidden = false; mBtn.textContent = '{{timer}} Disappearing: ' + optLabel(secs()); };
+  const _mc = $('menu').onclick;
+  $('menu').onclick = e => {
+    const b = e.target.closest('button');
+    if (b && b.dataset.a === 'disap'){ $('menuWrap').hidden = true; openDis(); return; }
+    return _mc(e);
+  };
+  function openDis(){
+    const key = curGroup || current; if (!key) return;
+    const cur = secs();
+    const dlg = el('dialog', {}, el('h2', { textContent: 'Disappearing messages' }),
+      el('p', { className: 'hint', textContent: 'New text messages you send in this chat vanish for everyone after this time. Photos, files and voice messages are not included.' }),
+      ...OPTS.map(([s, t]) => el('div', { className: 'row', style: 'margin-bottom:8px' }, el('button', {
+        className: s === cur ? '' : 'ghost', textContent: t, style: s === cur ? '' : 'border:1px solid var(--border)',
+        onclick: () => { SX.set('dis', { ...(SX.get('dis') || {}), [key]: s }); dlg.close(); toast(s ? 'Messages will disappear after ' + t : 'Disappearing messages off'); } }))),
+      el('div', { className: 'row' }, el('button', { className: 'ghost', textContent: 'Cancel', onclick: () => dlg.close() })));
+    dlg.addEventListener('close', () => dlg.remove());
+    document.body.appendChild(dlg); dlg.showModal();
+  }
+
+  /* ---------- 5) private mode: room codes only ---------- */
+  $('newGo').closest('.row').before(el('p', { id: 'pmHint', className: 'hint', textContent: 'Private mode is on. Start new chats with a room code.' }));
+  const _oc = openChat;
+  openChat = async function(id){
+    if (pm() && id && id === roomPeer && !okSet.has(id)){
+      okSet.add(id); SX.set('pmok', [...okSet]); renderList();
+    }
+    return _oc(id);
+  };
+  const _ni = notifyIncoming;
+  notifyIncoming = function(m){
+    if (pm() && m.sender_id !== me.id && !okIds().has(m.sender_id)) return;
+    return _ni(m);
+  };
+
+  /* ---------- 6) who can add me to groups (checked by the person adding you) ---------- */
+  async function refused(ids){
+    const bad = new Set();
+    const { data, error } = await sb.from('profiles').select('id,group_add').in('id', ids);
+    if (error || !data) return bad;
+    data.forEach(p => {
+      const g = p.group_add || 'everyone';
+      if (g === 'nobody' || (g === 'contacts' && !msgs.some(m => otherId(m) === p.id))) bad.add(p.id);
+    });
+    return bad;
+  }
+  const _rpc = sb.rpc.bind(sb);
+  sb.rpc = async function(fn, args, opts){
+    const make = fn === 'create_group' && args && args.p_members, change = fn === 'group_change_members' && args && args.p_add && args.p_add.length;
+    if (make || change){
+      const ids = make ? args.p_members : args.p_add, bad = await refused(ids);
+      if (bad.size){
+        const keep = ids.filter(id => !bad.has(id));
+        args = { ...args, p_keys: (args.p_keys || []).filter(k => !bad.has(k.user_id)) };
+        if (make) args.p_members = keep; else args.p_add = keep;
+        if (!keep.length) return { data: null, error: { message: 'Those people don’t allow group invites' } };
+        toast('Skipped ' + bad.size + ' ' + (bad.size === 1 ? 'person who doesn’t' : 'people who don’t') + ' allow group invites');
+      }
+    }
+    return _rpc(fn, args, opts);
+  };
+
+  /* ---------- the Privacy screen ---------- */
+  SX.hook('privacy', b => {
+    const p = profiles[me.id] || {};
+    const gsel = el('select', { onchange: async e => { if (!(await saveProfile({ group_add: e.target.value }))) rerender(); } },
+      ...[['everyone', 'Everyone'], ['contacts', 'My contacts'], ['nobody', 'Nobody']].map(([v, t]) => el('option', { value: v, textContent: t })));
+    gsel.value = p.group_add || 'everyone';
+    b.append(el('div', { className: 'sec', textContent: 'Messaging' }),
+      scard(
+        srow('Read receipts', pill(p.read_receipts !== false, async v => { if (!(await saveProfile({ read_receipts: v }))) rerender(); })),
+        srow('Typing indicator', pill(!!SX.get('typ'), v => SX.set('typ', v))),
+        srow('Hide message previews', pill(!!SX.get('hp'), v => { SX.set('hp', v); renderList(); })),
+        srow('Private mode (room codes only)', pill(pm(), v => {
+          if (v){
+            if (!confirm('Turn on private mode? You can only start new chats with room codes, and messages from people you have not chatted with are hidden.')) return rerender();
+            SX.set('pmok', [...new Set([...(SX.get('pmok') || []), ...chatIds()])]);
+          }
+          SX.set('pm', v); loadState(); renderList();
+        })),
+        srow('Who can add me to groups', gsel)),
+      el('p', { className: 'hint', textContent: 'If either of you turns off read receipts, neither sees the green dot. With typing off, you also stop seeing when others type. People already in your chats stay allowed in private mode.' }),
+      el('div', { className: 'sec', textContent: 'Disappearing messages' }),
+      el('p', { className: 'hint', textContent: 'Set per chat: open a chat, tap the ⋮ menu, then Disappearing messages.' }));
+  });
+
+  /* ---------- load on login, reset on logout ---------- */
+  let lastU = null;
+  setInterval(() => {
+    if (me && lastU !== me.id){ lastU = me.id; pmOn = null; loadState(); sweep(); renderList(); }
+    else if (!me && lastU){ lastU = null; pmOn = null; okSet = null; gone.clear(); document.body.classList.remove('pm'); }
+  }, 1000);
+})();
+</script>
+<!-- ===== END ABSOL SETTINGS PATCH 2 ===== -->
 
 </body>
 </html>
