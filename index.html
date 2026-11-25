@@ -3610,5 +3610,232 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
 })();
 </script>
 <!-- ===== END MEDIA SHARING ===== --> 
+  <!-- ===== UI PATCH 1 v2 START (delete the old UI PATCH 1 block first, then paste this at the very bottom, right before </body>. No SQL) ===== -->
+<style>
+:root{--r:12px;--rs:10px;--line:var(--border)}
+*,*::before,*::after{corner-shape:round!important;box-shadow:none!important;backdrop-filter:none!important;text-shadow:none!important}
+#app{background:var(--bg)}
+
+/* flat top bars, no boxes */
+.top{margin:0;padding:16px 16px 10px;background:transparent;border:0;border-radius:0}
+.brand{font-size:18px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;background:none;-webkit-background-clip:border-box;background-clip:border-box;color:var(--accent)}
+.top input{height:40px;padding:0 14px;border:0;border-radius:var(--rs);background:var(--surface2)}
+.chead{margin:0!important;padding:10px 12px!important;border:0!important;border-bottom:1px solid var(--line)!important;border-radius:0!important;background:var(--bg)!important}
+.iconbtn{width:40px;height:40px;border:0;border-radius:var(--rs);background:var(--surface2);color:var(--accent2)}
+.searchpill{border:0;border-radius:var(--rs);background:var(--surface2);color:var(--muted)}
+.av{border-radius:var(--r)}
+.av.grp{border-radius:var(--r)}
+.av.sm{border-radius:9px}
+.av.big{border-radius:18px}
+#avatarBtn{border-radius:var(--r)}
+
+/* home: flat segmented control, two solid cards */
+.switch{margin:0 16px 12px;padding:4px;background:var(--surface);border:0;border-radius:var(--r)}
+.switch .ind{background:var(--accent);border-radius:9px}
+.switch button{border-radius:9px;color:var(--muted);background:none;font-weight:700}
+.switch button.on{color:var(--accent-text)}
+.viewport{padding:0 12px 12px}
+.card{background:var(--surface);border:0;border-radius:var(--r)!important}
+
+/* lists are flat rows with hairline dividers */
+.convo{margin:0;padding:13px 16px;border:0;border-bottom:1px solid var(--line);border-radius:0;background:transparent}
+.convo:last-child{border-bottom:0}
+.convo:active,.convo.picked{background:var(--surface2)}
+.convo.unr{box-shadow:none}
+.ub{background:var(--accent);color:var(--accent-text);border-radius:7px;min-width:20px;padding:1px 6px}
+.fab{width:52px;height:52px;border-radius:14px;background:var(--accent);color:var(--accent-text)}
+.sec{display:block;margin:0;padding:18px 16px 6px;background:none;border-radius:0;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.banner{margin:10px;border-radius:var(--rs);background:var(--surface2)}
+
+/* only real groups of settings or info sit in a solid block */
+.scard,.dcard,.mbox{background:var(--surface);border:0;border-radius:var(--r)!important}
+.srow{padding:14px 16px;border-bottom:1px solid var(--line)}
+.scard>.srow:last-child{border-bottom:0}
+.act{background:var(--surface);border:0;border-radius:var(--r)}
+.dprof,.hero{background:none;border:0;padding:8px 0}
+.sres,.lres{background:var(--surface);border:0;border-radius:var(--rs);margin:4px 12px}
+.sres{margin-left:56px}
+.chip{background:var(--surface2);color:var(--accent2);border:0;border-radius:var(--rs)}
+.chip.on{background:var(--accent);color:var(--accent-text)}
+button{border-radius:var(--rs);background:var(--accent);color:var(--accent-text)}
+.ghost{background:transparent;color:var(--accent)}
+.ghost.wide{border:1px solid var(--line)}
+.tag{background:var(--accent);color:var(--accent-text);border-radius:6px}
+input,textarea,select{border:1px solid var(--line);border-radius:var(--rs);background:var(--surface);padding:12px 14px}
+mark{background:var(--accent);color:var(--accent-text);border-radius:4px}
+.sw{background:var(--surface2)}
+.mstack .av{border:2px solid var(--surface)}
+
+/* messages */
+#msgs{background:transparent;padding:10px 14px}
+.b.me,.b.them{border-radius:12px!important;padding:8px 12px;border:0}
+.b.me{background:var(--mine);color:var(--mine-text);border-bottom-right-radius:4px!important}
+.b.them{background:var(--theirs);color:var(--text);border-bottom-left-radius:4px!important}
+.gname{font-weight:700}
+.rq{background:var(--surface2);border-left:3px solid var(--accent);color:var(--text)}
+.att .ai{background:var(--surface2);color:var(--accent2)}
+.b.flash{animation:flashx 2s}
+@keyframes flashx{0%,55%{outline:2px solid var(--accent);outline-offset:1px}100%{outline:2px solid transparent;outline-offset:1px}}
+
+/* floating message box: no container, three separate pieces */
+#composer{margin:0;padding:8px 12px calc(10px + env(safe-area-inset-bottom,0px));gap:8px;border:0;border-radius:0;background:transparent!important}
+#composer input{height:42px;padding:0 14px;font-size:15px;border:0;border-radius:var(--rs);background:var(--surface2)}
+#composer input:focus{outline:1px solid var(--accent)}
+#sendBtn,#plusBtn{width:42px;height:42px;border-radius:var(--rs)}
+#sendBtn{background:var(--accent);color:var(--accent-text)}
+#plusBtn{background:var(--surface2);color:var(--accent2)}
+#sendBtn .i,#plusBtn .i{width:19px;height:19px}
+#rbar,#ebar{margin:0 12px 6px;border:0;border-radius:var(--rs);background:var(--surface2)}
+.blockbar{margin:0 12px 10px;border-radius:var(--rs);background:var(--surface);border:0}
+
+/* small popovers and bottom sheets */
+.menu{min-width:176px;padding:4px;background:var(--surface2);border:1px solid var(--line);border-radius:var(--r)!important;top:64px;right:12px}
+.menu button{display:flex;align-items:center;gap:10px;padding:10px 12px;font-size:14px;font-weight:600;border-radius:8px;background:none;color:var(--text)}
+.menu button.danger{color:var(--danger)}
+.menu button .i{width:18px;height:18px;margin:0}
+.menu button:active{background:var(--surface)}
+#mact{background:rgba(0,0,0,.4)}
+.menu.mactm{position:fixed;left:auto;right:auto;bottom:auto;top:0;min-width:170px;max-width:250px}
+.b.pressed{outline:2px solid var(--accent);outline-offset:1px}
+dialog{width:min(94vw,400px);margin:auto auto calc(12px + env(safe-area-inset-bottom,0px));padding:16px;background:var(--surface);border:0;border-radius:var(--r)!important;max-height:74vh;overflow-y:auto;animation:none}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog h2{font-size:14px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px}
+#mview{margin:auto!important}
+
+/* theme rows and call history */
+.dots{display:flex;align-items:center;gap:4px}
+.dots i{display:block;width:16px;height:16px;border-radius:5px;border:1px solid var(--line)}
+.callrow .cico{width:38px;height:38px;border-radius:var(--rs);display:grid;place-items:center;flex:none;background:var(--surface2);color:var(--accent2)}
+.callrow .cico.miss{color:var(--danger)}
+.callrow .cico .i{width:20px;height:20px;margin:0}
+.callrow .ck{color:var(--accent);flex:none}
+#callUI{background:var(--bg)}
+.cb{border-radius:16px}
+</style>
+<script>
+(function(){
+  /* 1) five rich, solid palettes. One accent family per theme, no gradients */
+  const mk = (n, hue, v) => { v.partner = v.accent2; v.hi = v.accent; return { n, hue, v }; };
+  THEMES.lavender = mk('Lavender', 262, { bg:'#120d22', surface:'#1a1430', surface2:'#241b42', border:'#2f2552', text:'#efe9ff', muted:'#9b90bd', accent:'#a58bff', accent2:'#cfc2ff', 'accent-text':'#150b2e', mine:'#a58bff', 'mine-text':'#150b2e', theirs:'#241b42' });
+  THEMES.orange   = mk('Orange', 28, { bg:'#160c05', surface:'#211309', surface2:'#2f1c0d', border:'#402716', text:'#fdeee0', muted:'#b79675', accent:'#f08a24', accent2:'#ffc88f', 'accent-text':'#1f0e02', mine:'#f08a24', 'mine-text':'#1f0e02', theirs:'#2f1c0d' });
+  THEMES.blue     = mk('Blue', 214, { bg:'#071022', surface:'#0d1a33', surface2:'#14264a', border:'#1f3563', text:'#e8f0ff', muted:'#7f98c5', accent:'#3d8bff', accent2:'#aacdff', 'accent-text':'#03102a', mine:'#3d8bff', 'mine-text':'#03102a', theirs:'#14264a' });
+  THEMES.green    = mk('Dark green', 152, { bg:'#06120c', surface:'#0c1f15', surface2:'#132d1e', border:'#1d4230', text:'#e4f6ea', muted:'#84b297', accent:'#2fbf7f', accent2:'#a7e9c7', 'accent-text':'#02150b', mine:'#2fbf7f', 'mine-text':'#02150b', theirs:'#132d1e' });
+  THEMES.rose     = mk('Rose sunset', 345, { bg:'#190b13', surface:'#26111d', surface2:'#351828', border:'#4b2438', text:'#ffeef3', muted:'#c999af', accent:'#f2587e', accent2:'#ffb9cb', 'accent-text':'#2a0712', mine:'#f2587e', 'mine-text':'#2a0712', theirs:'#351828' });
+
+  applyTheme = function(k){
+    const key = THEMES[k] ? k : 'lavender', t = THEMES[key], r = document.documentElement.style;
+    Object.entries(t.v).forEach(([a, b]) => r.setProperty('--' + a, b));
+    r.setProperty('--grad', t.v.accent);
+    themeHue = t.hue; localStorage.setItem('absol-theme', key);
+    document.querySelector('meta[name=theme-color]').content = t.v.bg;
+    try { if (me){ renderList(); if (!document.getElementById('chat').hidden) renderMsgs(); } } catch {}
+  };
+
+  /* avatars: solid tones from the theme's own colour */
+  const V = () => (THEMES[localStorage.getItem('absol-theme')] || THEMES.lavender).v;
+  const tones = v => [
+    { b: v.accent, f: v['accent-text'] },
+    { b: v.accent2, f: v['accent-text'] },
+    { b: 'color-mix(in srgb,' + v.accent + ' 55%,' + v.bg + ')', f: v.text },
+    { b: 'color-mix(in srgb,' + v.accent2 + ' 30%,' + v.surface2 + ')', f: v.accent2 }];
+  avatar = function(name, cls){
+    const d = document.createElement('div'); d.className = 'av ' + (cls || '');
+    const n = name || '?'; d.textContent = n[0].toUpperCase();
+    let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    const p = tones(V())[h % 4]; d.style.background = p.b; d.style.color = p.f;
+    const ph = (cls || '').includes('grp') ? null : photoByName[n];
+    if (ph){ d.textContent = ''; d.style.backgroundImage = 'url("' + ph + '")'; d.style.backgroundSize = 'cover'; d.style.backgroundPosition = 'center'; }
+    return d;
+  };
+  if (window.P2) P2.decor.push((b, m) => {
+    const col = b.parentElement && b.parentElement.classList.contains('gcol') ? b.parentElement : null; if (!col) return;
+    const g = col.querySelector('.gname'); if (!g) return;
+    const v = V(), pal = [v.accent, v.accent2, 'color-mix(in srgb,' + v.accent + ' 55%,' + v.text + ')'];
+    let h = 0; for (const c of String(m.sender_id)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    g.style.color = pal[h % 3];
+  });
+
+  /* 2) settings stay a simple flat list; themes show three solid dots */
+  VIEWS.main = function(b){
+    b.append(scard(...[['{{user}} Profile', 'profile'], ['{{lock}} Locked chats', 'locks'], ['{{shield}} Privacy', 'privacy'], ['{{block}} Blocked contacts', 'blocked'], ['{{bell}} Notifications', 'notif'], ['{{palette}} Theme', 'theme']]
+      .map(([t, v]) => srow(t, '{{chev-right}}', () => gotoView(v)))));
+  };
+  VIEWS.theme = function(b){
+    b.append(scard(...Object.entries(THEMES).map(([k, t]) => srow(t.n,
+      el('span', { className: 'dots' }, ...[t.v.bg, t.v.accent, t.v.accent2].map(c => el('i', { style: 'background:' + c })), prefs.theme === k ? ' {{check}}' : ''),
+      () => { applyTheme(k); savePrefs({ theme: k }); rerender(); }))));
+  };
+
+  /* 3) message actions: a small card next to the pressed bubble */
+  let pressed = null;
+  const msgs$ = $('msgs');
+  ['touchstart', 'contextmenu'].forEach(ev => msgs$.addEventListener(ev, e => { const b = e.target.closest && e.target.closest('.b'); if (b) pressed = b; }, { passive: true, capture: true }));
+  function place(wrap){
+    const menu = wrap.firstElementChild, b = pressed && document.body.contains(pressed) ? pressed : null; if (!menu) return;
+    menu.style.visibility = 'hidden'; if (b) b.classList.add('pressed');
+    requestAnimationFrame(() => {
+      const vw = innerWidth, vh = innerHeight, mr = menu.getBoundingClientRect();
+      let top, left;
+      if (b){
+        const r = b.getBoundingClientRect(), mine = b.classList.contains('me');
+        top = r.top - mr.height - 8; if (top < 70) top = Math.min(r.bottom + 8, vh - mr.height - 12);
+        left = mine ? r.right - mr.width : r.left;
+      } else { top = vh - mr.height - 90; left = (vw - mr.width) / 2; }
+      left = Math.max(10, Math.min(left, vw - mr.width - 10)); top = Math.max(10, top);
+      menu.style.top = top + 'px'; menu.style.left = left + 'px'; menu.style.visibility = '';
+    });
+    const ob = new MutationObserver(() => { if (!document.body.contains(wrap)){ if (b) b.classList.remove('pressed'); ob.disconnect(); } });
+    ob.observe(document.body, { childList: true });
+  }
+  new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.id === 'mact') place(n); }))).observe(document.body, { childList: true });
+
+  /* 4) call history: long-press a call to select; rows only have a call-back button */
+  const AC = window.AbsolCall;
+  if (AC){
+    const card = $('cardCalls'), bar = card.children[0], list = card.children[1], fab = card.children[2];
+    const KEY = () => 'absol-calls:' + me.id;
+    const save = a => { try { localStorage.setItem(KEY(), JSON.stringify(a.slice(0, 100))); } catch {} };
+    const load = () => { let a = []; try { a = JSON.parse(localStorage.getItem(KEY()) || '[]'); } catch {} let ch = false; a.forEach((e, i) => { if (!e.id){ e.id = e.t + '-' + i; ch = true; } }); if (ch) save(a); return a; };
+    const dur = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    let sel = false, picked = new Set(), lpAt = 0;
+    const exit = () => { sel = false; picked = new Set(); AC.render(); };
+    const del = ids => { save(load().filter(e => !ids.has(e.id))); exit(); };
+    AC.render = function(){
+      if (!me) return;
+      const a = load(); list.textContent = ''; bar.textContent = ''; bar.hidden = !sel; fab.hidden = sel;
+      if (!a.length){ sel = false; bar.hidden = true; fab.hidden = false; list.appendChild(el('div', { className: 'empty', textContent: 'No calls yet. Open a chat and tap the phone icon.' })); return; }
+      if (sel){
+        bar.append(chipBtn('{{x}} Cancel', exit),
+          chipBtn(picked.size === a.length ? 'None' : 'All', () => { picked = picked.size === a.length ? new Set() : new Set(a.map(e => e.id)); AC.render(); }),
+          chipBtn('{{trash}} Delete (' + picked.size + ')', () => { if (!picked.size) return toast('Select calls first'); if (confirm('Delete ' + picked.size + ' selected?')) del(new Set(picked)); }),
+          chipBtn('Clear all', () => { if (confirm('Delete your entire call history on this device?')) del(new Set(a.map(e => e.id))); }));
+      }
+      a.forEach(e => {
+        const label = { completed: dur(e.dur || 0), missed: 'Missed', declined: 'Declined', noanswer: 'No answer', busy: 'Busy', failed: 'Failed' }[e.status] || '';
+        const miss = e.status === 'missed';
+        const tx = el('div', { className: 'tx' }, el('b', { textContent: dname(e.peer) }),
+          el('span', { className: miss ? 'miss' : '', textContent: (e.dir === 'out' ? 'Outgoing' : 'Incoming') + ' · ' + label + ' · ' + fmtTime(new Date(e.t).toISOString()) }));
+        const row = el('div', { className: 'convo callrow' + (sel && picked.has(e.id) ? ' picked' : '') });
+        const tail = sel ? el('span', { className: 'ck', textContent: picked.has(e.id) ? '{{check-circle}}' : '' })
+          : el('button', { className: 'iconbtn', textContent: e.video ? '{{video}}' : '{{phone}}', onclick: ev => { ev.stopPropagation(); AC.start(e.peer, e.video); } });
+        row.append(el('div', { className: 'cico' + (miss ? ' miss' : ''), textContent: '{{' + (e.video ? 'video' : 'phone') + '}}' }), avatar((profiles[e.peer] || {}).username), tx, tail);
+        const toggle = () => { if (picked.has(e.id)) picked.delete(e.id); else picked.add(e.id); AC.render(); };
+        let tm = 0, sx = 0, sy = 0;
+        row.addEventListener('touchstart', ev => { const t = ev.touches[0]; sx = t.clientX; sy = t.clientY; clearTimeout(tm);
+          tm = setTimeout(() => { lpAt = Date.now(); if (navigator.vibrate) navigator.vibrate(15); if (!sel){ sel = true; picked = new Set([e.id]); AC.render(); } else toggle(); }, 450); }, { passive: true });
+        row.addEventListener('touchmove', ev => { const t = ev.touches[0]; if (Math.abs(t.clientX - sx) > 8 || Math.abs(t.clientY - sy) > 8) clearTimeout(tm); }, { passive: true });
+        ['touchend', 'touchcancel'].forEach(n => row.addEventListener(n, () => clearTimeout(tm), { passive: true }));
+        row.addEventListener('contextmenu', ev => { ev.preventDefault(); if (Date.now() - lpAt > 700){ lpAt = Date.now(); if (!sel){ sel = true; picked = new Set([e.id]); AC.render(); } } });
+        row.onclick = () => { if (Date.now() - lpAt < 700) return; if (sel) toggle(); else openChat(e.peer); };
+        list.appendChild(row);
+      });
+    };
+    if (me) AC.render();
+  }
+
+  applyTheme(localStorage.getItem('absol-theme') || 'lavender');
+})();
+</script>
+<!-- ===== UI PATCH 1 v2 END ===== -->
 </body>
 </html>
