@@ -3837,5 +3837,80 @@ dialog h2{font-size:14px;text-transform:uppercase;letter-spacing:.1em;margin-bot
 })();
 </script>
 <!-- ===== UI PATCH 1 v2 END ===== -->
+  <!-- ===== ABSOL FIX: shared media in contact info + sentence-case headings + soft font =====
+     Paste at the very bottom of your HTML, after the UI PATCH 1 v2 block and before </body>.
+     Nothing is deleted. To undo, delete this block. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800&display=swap">
+<style>
+/* ---- font: soft, rounded edges ----
+   If you add the BluesysStdRegularLatin font file next to your HTML in GitHub, remove the comment marks
+   below and fix the file name. The font stack already lists it first, so nothing else is needed.
+@font-face{font-family:"BluesysStdRegularLatin";src:url("BluesysStdRegularLatin.woff2") format("woff2");font-display:swap}
+*/
+:root{--font:"BluesysStdRegularLatin","Nunito",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body,button,input,textarea,select,dialog,#boot{font-family:var(--font)}
+body{letter-spacing:0}
+
+/* ---- headings: one capital at the start, the rest lowercase ---- */
+.brand,.sec,.dlabel,dialog h2{text-transform:none;letter-spacing:0}
+.brand{font-size:22px;font-weight:800}
+.sec{font-size:13px;font-weight:700}
+.dlabel{font-size:13px;font-weight:700}
+dialog h2{font-size:17px;font-weight:800}
+
+/* ---- shared media in contact info ---- */
+.mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.mcell{min-width:0}
+.mgrid .mm img{width:100%;height:110px;min-height:0;max-height:none;border-radius:10px;object-fit:cover}
+.mrow{padding:8px 0;border-bottom:1px solid var(--line,var(--border))}
+.mrow:last-child{border-bottom:0}
+.mrow>small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+</style>
+<script>
+(function(){
+  const P2 = window.P2, U = id => document.getElementById(id);
+  const oldRender = renderMedia;
+  mediaTab = 'images';
+
+  /* read the attachment info out of a message (same method the chat bubbles use) */
+  function attOf(m){
+    if (m._att !== undefined) return m._att;
+    decrypt(m);
+    if (typeof m._t !== 'string' || m._t.charCodeAt(0) !== 0x2064) return null;
+    let a = null;
+    try {
+      const pt = nacl.box.open(unb64(m.ciphertext), unb64(m.nonce), unb64(profiles[otherId(m)].public_key), me.sk);
+      const s = pt && nacl.util.encodeUTF8(pt);
+      if (s && s.startsWith(P2.PFX)) a = JSON.parse(s.slice(P2.PFX.length)).a || null;
+    } catch {}
+    return (m._att = a);
+  }
+  const want = (tab, a) => tab === 'images' ? a.ty === 'image' : tab === 'videos' ? a.ty === 'video' : (a.ty === 'doc' || a.ty === 'audio');
+
+  renderMedia = function(){
+    if (mediaTab === 'links') return oldRender();
+    const box = U('mediaList'); box.textContent = '';
+    document.querySelectorAll('#mediaBody .tabs .chip').forEach(b => b.classList.toggle('on', b.dataset.t === mediaTab));
+    const list = msgs
+      .filter(m => visible(m) && otherId(m) === current && !m.pending && !P2.isGone(m))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .map(m => ({ m, a: attOf(m) }))
+      .filter(x => x.a && want(mediaTab, x.a));
+    if (!list.length){ box.append(el('div', { className: 'empty', textContent: 'No ' + mediaTab + ' shared yet.' })); return; }
+    const img = mediaTab === 'images', wrap = el('div', { className: img ? 'mgrid' : '' });
+    list.forEach(({ m }) => {
+      /* build a hidden bubble so the chat's own attachment code draws the item and handles taps */
+      const b = el('div', { className: 'b' }, el('span', { textContent: m._t || '' }), el('small'));
+      b.dataset.mid = m.id;
+      P2.decor.forEach(f => { try { f(b, m); } catch {} });
+      const nd = b.querySelector('.mm,.att'); if (!nd) return;
+      wrap.append(img ? el('div', { className: 'mcell' }, nd)
+        : el('div', { className: 'mrow' }, nd, el('small', { textContent: (m.sender_id === me.id ? 'You' : dname(otherId(m))) + ' · ' + fmtTime(m.created_at) })));
+    });
+    box.append(wrap);
+  };
+  if (!U('details').hidden) renderMedia();
+})();
+</script>
 </body>
 </html>
