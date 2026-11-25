@@ -4950,6 +4950,240 @@ body.pm #newUser,body.pm #newGo,body.pm #pickUser,body.pm #pickAdd{display:none}
 })();
 </script>
 <!-- ===== END ABSOL SETTINGS PATCH 2 ===== -->
+<!-- ===== ABSOL SETTINGS PATCH 3: Account and security (on this device) =====-->
+<style>
+#lockUI{position:fixed;inset:0;z-index:120;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;background:var(--bg);color:var(--text)}
+#lockUI .lkb{font-size:26px;font-weight:800;letter-spacing:.14em;color:var(--accent)}
+#lockUI .lks{color:var(--muted);min-height:22px;text-align:center}
+#lockUI .lkd{display:flex;gap:12px;height:16px}
+#lockUI .lkd i{width:14px;height:14px;border-radius:50%;border:2px solid var(--accent)}
+#lockUI .lkd i.f{background:var(--accent)}
+#lockUI .kp{display:grid;grid-template-columns:repeat(3,72px);gap:12px;margin:8px 0}
+#lockUI .kp button{width:72px;height:72px;border-radius:50%;font-size:24px;font-weight:700;background:var(--surface2);color:var(--text)}
+#lockUI .kp span{display:block}
+#privCover{display:none;position:fixed;inset:0;z-index:115;pointer-events:none;background:color-mix(in srgb,var(--bg) 78%,transparent)}
+body.pblur #privCover{display:block}
+body.pblur #app,body.pblur dialog{filter:blur(26px)}
+#panicUI{position:fixed;inset:0;z-index:130;background:#fff;color:#202124;display:flex;align-items:center;justify-content:center;padding:28px;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+#panicUI[hidden]{display:none}
+#panicUI .pbox{max-width:360px;width:100%}
+#panicUI .pic{font-size:44px;margin-bottom:12px;color:#5f6368;width:max-content;cursor:default}
+#panicUI h1{font-size:22px;font-weight:600;margin:0 0 10px}
+#panicUI p{margin:0 0 8px;color:#5f6368;font-size:14px}
+#panicUI .pe{font-size:12px}
+#panicUI button{margin-top:14px;background:#1a73e8;color:#fff;border-radius:4px;padding:8px 18px}
+</style>
+<script>
+(function(){
+  const SX = window.SX;
+  if (!SX){ console.warn('[patch3] needs Patch 1'); return; }
+  Object.assign(SX.defs, { al: -1, blur: false, panic: false });
+  const U = id => document.getElementById(id);
+  const callOn = () => !!(window.AbsolCall && AbsolCall.cur && AbsolCall.cur());
+
+  /* ================= PIN storage ================= */
+  const pinKey = () => 'absol-pin:' + me.id, failKey = () => 'absol-pinf:' + me.id;
+  const rec = () => { try { return JSON.parse(localStorage.getItem(pinKey())); } catch { return null; } };
+  const hasPin = () => !!(me && rec());
+  async function savePin(pin){
+    const salt = nacl.randomBytes(16), iter = 150000, h = await deriveKey(pin, salt, iter);
+    localStorage.setItem(pinKey(), JSON.stringify({ s: b64(salt), i: iter, h: b64(h), l: pin.length }));
+    localStorage.removeItem(failKey());
+  }
+  async function verifyPin(pin){
+    const r = rec(); if (!r) return false;
+    return b64(await deriveKey(pin, unb64(r.s), r.i)) === r.h;
+  }
+  const fails = () => { try { return JSON.parse(localStorage.getItem(failKey())) || { n: 0, u: 0 }; } catch { return { n: 0, u: 0 }; } };
+
+  /* ================= lock screen ================= */
+  let locked = false, unlocked = false, ui = null, buf = '';
+  const closeOverlays = () => {
+    document.querySelectorAll('dialog[open]').forEach(d => { try { d.close(); } catch {} });
+    const m = U('mact'); if (m) m.remove(); U('menuWrap').hidden = true;
+  };
+  function dots(){
+    const r = rec(), d = ui && ui.querySelector('.lkd'); if (!r || !d) return;
+    d.replaceChildren(...Array.from({ length: r.l }, (_, i) => el('i', { className: i < buf.length ? 'f' : '' })));
+  }
+  const setSub = t => { const s = ui && ui.querySelector('.lks'); if (s) s.textContent = t; };
+  function lock(){
+    if (!me || !hasPin() || locked) return;
+    locked = true; unlocked = false; buf = ''; closeOverlays();
+    const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
+    ui = el('div', { id: 'lockUI' },
+      el('div', { className: 'lkb', textContent: 'ABSOL' }), el('div', { className: 'lks', textContent: 'Enter your PIN' }), el('div', { className: 'lkd' }),
+      el('div', { className: 'kp' }, ...keys.map(k => k ? el('button', { textContent: k, onclick: () => press(k) }) : el('span'))),
+      el('button', { className: 'ghost', textContent: 'Forgot PIN? Log out', onclick: forgot }));
+    document.body.appendChild(ui); dots();
+  }
+  function unlock(){
+    locked = false; unlocked = true; buf = ''; lastAct = Date.now();
+    if (ui){ ui.remove(); ui = null; }
+  }
+  async function press(k){
+    if (!locked) return;
+    const f = fails();
+    if (Date.now() < f.u) return setSub('Try again in ' + Math.ceil((f.u - Date.now()) / 1000) + 's');
+    buf = k === '⌫' ? buf.slice(0, -1) : (buf.length < 8 ? buf + k : buf);
+    dots(); setSub('Enter your PIN');
+    const r = rec(); if (!r || buf.length !== r.l) return;
+    const pin = buf, ok = await verifyPin(pin);
+    if (ok){ localStorage.removeItem(failKey()); return unlock(); }
+    const n = f.n + 1, wait = n >= 5 ? Math.min(900, 30 * Math.pow(2, n - 5)) : 0;
+    localStorage.setItem(failKey(), JSON.stringify({ n, u: wait ? Date.now() + wait * 1000 : 0 }));
+    buf = ''; dots(); setSub(wait ? 'Too many tries. Wait ' + wait + 's' : 'Wrong PIN');
+    if (navigator.vibrate) navigator.vibrate(120);
+  }
+  document.addEventListener('keydown', e => {
+    if (!locked) return;
+    if (/^\d$/.test(e.key)) press(e.key); else if (e.key === 'Backspace') press('⌫');
+  });
+  async function forgot(){
+    if (!confirm('Log out? You will sign in again with your password and the PIN will be removed.')) return;
+    try { localStorage.removeItem(pinKey()); localStorage.removeItem(failKey()); } catch {}
+    locked = false; if (ui){ ui.remove(); ui = null; }
+    await logout();
+  }
+
+  /* lock when the app opens (first screen after sign-in) */
+  const _show = show;
+  show = function(name){
+    _show.apply(this, arguments);
+    if (name !== 'auth' && me && !locked && !unlocked && hasPin()) lock();
+  };
+
+  /* ================= auto-lock ================= */
+  let hiddenAt = 0, lastAct = Date.now();
+  const delay = () => { const v = SX.get('al'); return typeof v === 'number' ? v : -1; };
+  ['touchstart', 'pointerdown', 'keydown', 'scroll'].forEach(n => document.addEventListener(n, () => { lastAct = Date.now(); }, { capture: true, passive: true }));
+  document.addEventListener('visibilitychange', () => {
+    if (!me) return;
+    const d = delay();
+    if (document.hidden){
+      hiddenAt = Date.now();
+      if (d === 0 && hasPin() && !callOn()) lock();       /* lock before the app switcher snapshot */
+    } else {
+      if (d > 0 && hasPin() && !locked && hiddenAt && Date.now() - hiddenAt >= d * 1000 && !callOn()) lock();
+      hiddenAt = 0; lastAct = Date.now();
+    }
+  });
+  setInterval(() => {
+    const d = delay();
+    if (me && d > 0 && !locked && hasPin() && !document.hidden && !callOn() && Date.now() - lastAct > d * 1000) lock();
+    if (!me && (locked || unlocked)){ locked = false; unlocked = false; if (ui){ ui.remove(); ui = null; } }
+  }, 5000);
+
+  /* ================= blur when switching apps ================= */
+  document.body.appendChild(el('div', { id: 'privCover' }));
+  const blurOn = () => { if (me && SX.get('blur')) document.body.classList.add('pblur'); };
+  const blurOff = () => document.body.classList.remove('pblur');
+  document.addEventListener('visibilitychange', () => document.hidden ? blurOn() : blurOff());
+  window.addEventListener('blur', blurOn); window.addEventListener('pagehide', blurOn);
+  window.addEventListener('focus', blurOff); window.addEventListener('pageshow', blurOff);
+  ['pointerdown', 'touchstart'].forEach(n => document.addEventListener(n, blurOff, true));
+
+  /* ================= panic hide ================= */
+  let taps = 0, tapT = 0;
+  const decoy = el('div', { id: 'panicUI', hidden: true }, el('div', { className: 'pbox' },
+    el('div', { className: 'pic', textContent: ':(', onclick: () => {
+      const n = Date.now(); taps = n - tapT < 3000 ? taps + 1 : 1; tapT = n;
+      if (taps >= 5){ taps = 0; unhide(); }
+    } }),
+    el('h1', { textContent: 'This page isn’t working' }), el('p', { textContent: 'The site took too long to respond.' }),
+    el('p', { className: 'pe', textContent: 'ERR_TIMED_OUT' }), el('button', { textContent: 'Reload' })));
+  document.body.appendChild(decoy);
+  function panic(){
+    if (!me) return;
+    closeOverlays(); unlocked = false;
+    try { goList(); } catch {}
+    decoy.hidden = false;
+  }
+  function unhide(){ decoy.hidden = true; if (hasPin()) lock(); }
+  SX.panic = panic;
+  let bt = 0, bn = 0;
+  document.addEventListener('click', e => {
+    if (!SX.get('panic') || !e.target.closest || !e.target.closest('#list .brand')) return;
+    const n = Date.now(); bn = n - bt < 900 ? bn + 1 : 1; bt = n;
+    if (bn >= 3){ bn = 0; panic(); }
+  });
+  let shakeAt = 0;
+  window.addEventListener('devicemotion', e => {
+    const a = e.accelerationIncludingGravity; if (!a || !me || !SX.get('panic')) return;
+    if (Math.hypot(a.x || 0, a.y || 0, a.z || 0) > 30){
+      const n = Date.now(); if (n - shakeAt < 900){ shakeAt = 0; panic(); } else shakeAt = n;
+    }
+  });
+  document.addEventListener('keydown', e => { if (me && SX.get('panic') && e.altKey && e.shiftKey && e.key.toLowerCase() === 'h') panic(); });
+
+  /* ================= PIN dialogs ================= */
+  function pinDlg(title, hint, ph){
+    return new Promise(res => {
+      let done = false;
+      const inputs = ph.map(p => el('input', { type: 'password', inputMode: 'numeric', maxLength: 8, placeholder: p, autocomplete: 'off', style: 'margin-top:8px' }));
+      const msg = el('div', { className: 'hint', style: 'color:var(--danger);margin-top:8px' });
+      const fin = v => { if (done) return; done = true; d.close(); d.remove(); res(v); };
+      const d = el('dialog', {}, el('h2', { textContent: title }), hint ? el('p', { className: 'hint', textContent: hint }) : '', ...inputs, msg,
+        el('div', { className: 'row', style: 'margin-top:12px' },
+          el('button', { className: 'ghost', textContent: 'Cancel', onclick: () => fin(null) }),
+          el('button', { textContent: 'OK', onclick: () => {
+            const v = inputs.map(i => i.value.trim());
+            if (v.some(x => !/^\d{4,8}$/.test(x))) return (msg.textContent = 'Use 4 to 8 digits');
+            fin(v);
+          } })));
+      d.addEventListener('cancel', () => fin(null));
+      document.body.appendChild(d); d.showModal(); inputs[0].focus();
+    });
+  }
+  async function askCurrent(){
+    const v = await pinDlg('Current PIN', '', ['Current PIN']); if (!v) return false;
+    if (await verifyPin(v[0])) return true;
+    toast('Wrong PIN'); return false;
+  }
+  async function newPin(){
+    const v = await pinDlg(hasPin() ? 'New PIN' : 'Set PIN', 'Choose 4 to 8 digits. It locks Absol on this device.', ['New PIN', 'Repeat PIN']); if (!v) return;
+    if (v[0] !== v[1]) return toast('The PINs don’t match');
+    await savePin(v[0]); unlocked = true; toast('PIN saved'); rerender();
+  }
+  const changePin = async () => { if (await askCurrent()) newPin(); };
+  async function removePin(){
+    if (!(await askCurrent())) return;
+    localStorage.removeItem(pinKey()); localStorage.removeItem(failKey()); SX.set('al', -1); toast('PIN removed'); rerender();
+  }
+
+  /* ================= settings screen ================= */
+  U('bkDlg').addEventListener('close', () => { if (sview === 'account' && !U('settings').hidden) rerender(); });
+  VIEWS.account = b => {
+    const pin = hasPin();
+    const alSel = el('select', { disabled: !pin, onchange: e => SX.set('al', +e.target.value) },
+      ...[[-1, 'Off'], [0, 'When I leave the app'], [60, 'After 1 minute'], [300, 'After 5 minutes'], [900, 'After 15 minutes'], [3600, 'After 1 hour']]
+        .map(([v, t]) => el('option', { value: v, textContent: t })));
+    alSel.value = String(delay());
+    b.append(el('div', { className: 'sec', textContent: 'Key' }),
+      scard(
+        srow('Key backup', el('span', { className: 'r' + (me.backedUp ? '' : ' red'), textContent: me.backedUp ? 'Backed up' : 'Not backed up' })),
+        srow(me.backedUp ? 'Update your backup' : 'Back up now', chipBtn('Open', openBackupDlg))),
+      el('div', { className: 'sec', textContent: 'Lock' }),
+      scard(
+        srow('App PIN lock', pin ? el('div', { className: 'pr' }, chipBtn('Change', changePin), chipBtn('Remove', removePin)) : chipBtn('Set PIN', newPin)),
+        srow('Auto-lock', alSel)),
+      el('p', { className: 'hint', textContent: pin
+        ? 'Auto-lock needs the PIN. “When I leave the app” also locks after the file picker or camera, so you unlock once after choosing a file. A PIN keeps casual snoopers out of the app on this phone.'
+        : 'Set a PIN first to use auto-lock and panic lock.' }),
+      el('div', { className: 'sec', textContent: 'Screen privacy' }),
+      scard(
+        srow('Blur when switching apps', pill(!!SX.get('blur'), v => SX.set('blur', v))),
+        srow('Panic hide', pill(!!SX.get('panic'), v => {
+          SX.set('panic', v);
+          if (v && window.DeviceMotionEvent && DeviceMotionEvent.requestPermission) DeviceMotionEvent.requestPermission().catch(() => {});
+        })),
+        srow('Hide now', chipBtn('Hide', () => panic()))),
+      el('p', { className: 'hint', textContent: 'Panic hide covers Absol with a plain error page. Triggers: tap the Absol title 3 times on the home screen, or shake the phone twice. To bring it back, tap the sad face 5 times. If you have a PIN, the app asks for it first.' }));
+    (SX.ext.account || []).forEach(f => f(b));
+  };
+})();
+</script>
+<!-- ===== END ABSOL SETTINGS PATCH 3 ===== -->
 
 </body>
 </html>
