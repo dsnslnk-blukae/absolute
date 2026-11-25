@@ -3610,5 +3610,109 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
 })();
 </script>
 <!-- ===== END MEDIA SHARING ===== -->
+  <!-- ===== ABSOL BLOCK 1: rich palettes + sleek pass + slim tiles + slim message box =====
+     Paste this at the very bottom of your HTML, after the MEDIA SHARING block and before </body>.
+     Nothing else is deleted or changed. To undo it, delete this whole block. -->
+<style>
+/* ---- richer gradient: accent into a companion colour (companion is set per theme below) ---- */
+:root{--comp:#f08fd0;--card:#0b0716;
+  --grad:linear-gradient(135deg,var(--accent) 0%,color-mix(in srgb,var(--accent) 58%,var(--comp)) 100%)}
+#app{background:
+  radial-gradient(90% 38% at 100% 0%,color-mix(in srgb,var(--comp) 14%,transparent),transparent 62%),
+  radial-gradient(120% 55% at 0% -8%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 62%),
+  var(--bg)}
+
+/* ---- finer icons, smaller buttons, tighter type ---- */
+.i{stroke-width:1.7}
+button{padding:9px 14px;font-size:14.5px;border-radius:18px}
+.iconbtn{width:38px;height:38px;border-radius:15px}
+.iconbtn .i{width:20px;height:20px}
+.top{padding:12px 14px 6px}
+.brand{font-size:24px}
+.searchpill{padding:8px 14px;font-size:13px}
+.chip{padding:6px 12px;font-size:13px}
+.chead{padding:8px 12px}
+.peer .av{width:36px;height:36px;font-size:15px}
+.pn b{font-size:15px}
+.av{color:var(--accent-text);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--accent) 28%,transparent)}
+.srow{padding:12px 16px}
+.scard{border:1px solid color-mix(in srgb,var(--border) 70%,transparent)}
+#toast{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+.sw{background:var(--border)}
+
+/* ---- main card follows the theme (it was fixed purple-black) ---- */
+.card{background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 5%,var(--card)),var(--card) 42%);
+  border:1px solid var(--border);
+  box-shadow:0 16px 36px color-mix(in srgb,var(--accent) 10%,rgba(0,0,0,.5))}
+.fab{width:54px;height:54px;border-radius:24px;box-shadow:0 10px 22px color-mix(in srgb,var(--accent) 34%,transparent)}
+.fab .i{width:24px;height:24px}
+
+/* ---- slim chat tiles ---- */
+.convo{position:relative;gap:11px;margin:3px 10px;padding:9px 12px;border-radius:22px;
+  background:color-mix(in srgb,var(--surface) 55%,transparent);
+  border:1px solid color-mix(in srgb,var(--border) 55%,transparent)}
+.convo:active{background:color-mix(in srgb,var(--accent) 12%,var(--surface))}
+.convo .av{width:40px;height:40px;font-size:16px}
+.convo b{font-size:15px;font-weight:700}
+.convo span{font-size:13px}
+.convo b .i{width:.9em;height:.9em}
+#convos .convo .tx b{padding-right:52px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#convos .convo .tx span{padding-right:30px}
+#convos .convo .ct{position:absolute;top:10px;right:14px;font-size:11px;font-weight:600;color:var(--muted)}
+#convos .convo.unr .ct{color:var(--accent)}
+#convos .convo .ub{position:absolute;right:13px;bottom:9px;margin:0;min-width:18px;padding:1px 6px;font-size:11px;line-height:1.5}
+
+/* ---- chat bubbles: tighter, time only on tap ---- */
+#msgs{padding:12px;gap:5px}
+.b{font-size:15px;line-height:1.35}
+.b.me,.b.them{padding:7px 12px;border-radius:20px}
+.b.me{border-bottom-right-radius:7px}
+.b.them{border-bottom-left-radius:7px;border:1px solid color-mix(in srgb,var(--accent) 12%,transparent)}
+#msgs .b small{display:none}
+#msgs .b.showt small,#msgs>.b:last-child small,#msgs>.gm:last-child .b small{display:inline}
+
+/* ---- slim message box ---- */
+#composer{gap:7px;padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px))}
+#composer input{height:38px;padding:0 15px;font-size:15px;border-radius:22px}
+#sendBtn{width:38px;height:38px;border-radius:16px}
+#sendBtn .i{width:18px;height:18px}
+#plusBtn{width:38px;height:38px;border-radius:16px}
+#plusBtn .i{width:20px;height:20px}
+</style>
+<script>
+(function(){
+  /* ---- 1) palettes: every theme gets a deeper base plus a companion colour ---- */
+  const P = {
+    lavender:{bg:'#0f0a1e',surface:'#181030',surface2:'#231847',border:'#33255f',theirs:'#2b1f52',comp:'#f08fd0',card:'#0b0716'},
+    orange:  {bg:'#1a0e07',surface:'#271509',surface2:'#36200f',border:'#4d2f18',theirs:'#3a2312',comp:'#ff7f6e',card:'#120a04'},
+    blue:    {bg:'#08101f',surface:'#0e1a33',surface2:'#15264a',border:'#223a68',theirs:'#1a2d57',comp:'#4fd1e0',card:'#050b17'},
+    green:   {bg:'#07130d',surface:'#0d1f16',surface2:'#143021',border:'#1f4a33',theirs:'#173b27',comp:'#5ad6c4',card:'#040c08'}
+  };
+  Object.keys(P).forEach(k => { if (THEMES[k]) Object.assign(THEMES[k].v, P[k]); });
+  applyTheme(localStorage.getItem('absol-theme') || 'lavender');
+
+  /* ---- 2) chat list: move the time to the top right of each tile ---- */
+  function slimTimes(){
+    document.querySelectorAll('#convos > .convo').forEach(row => {
+      if (row.querySelector('.ct')) return;
+      const sp = row.querySelector('.tx span'); if (!sp) return;
+      const nodes = [...sp.childNodes].filter(n => n.nodeType === 3), t = nodes[nodes.length - 1];
+      if (!t) return;
+      const m = t.nodeValue.match(/ · ([^·]+)$/); if (!m) return;
+      t.nodeValue = t.nodeValue.slice(0, m.index);
+      row.append(el('small', { className: 'ct', textContent: m[1] }));
+    });
+  }
+  const _rl = renderList;
+  renderList = function(){ _rl(); try { slimTimes(); } catch (e) { console.warn('[block1]', e); } };
+  renderList();
+
+  /* ---- 3) tap a bubble to show or hide its time (the newest message always shows it) ---- */
+  document.getElementById('msgs').addEventListener('click', e => {
+    if (e.target.closest('.att,.mm,.rq,a,mark')) return;
+    const b = e.target.closest('.b'); if (b) b.classList.toggle('showt');
+  });
+})();
+</script>
 </body>
 </html>
