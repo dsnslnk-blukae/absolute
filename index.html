@@ -3976,6 +3976,34 @@ dialog h2{font-size:17px;font-weight:800}
   if (!document.getElementById('chat').hidden) renderMsgs();
 })();
 </script>
+<!-- ===== ABSOL DOT FIX: bigger status dot outside the bubble, theme-matched colours =====
+     Paste at the very bottom of your HTML, after the BUBBLES block and before </body>.
+     Nothing is deleted. To undo, delete this block. -->
+<style>
+/* Colours: sent = dim, read = lit. Both come from your theme.
+   To try other colours, change these two lines, for example --dot-read:#7be3c1 (mint) or var(--accent2) (pale tint). */
+:root{--dot-sent:var(--muted);--dot-read:var(--accent)}
+
+#msgs .b.me{position:relative}
+#msgs .b.me > .tk.dot{position:absolute;left:-17px;bottom:7px;width:10px;height:10px;margin:0;border:0;border-radius:50%;background:var(--dot-sent);opacity:.85}
+#msgs .b.me > .tk.dot.read{background:var(--dot-read);opacity:1}
+#msgs .b.me > .tk.dot.pend{background:transparent;border:1.5px solid var(--dot-sent);opacity:.6}
+</style>
+<script>
+(function(){
+  const rm1 = renderMsgs;
+  renderMsgs = function(){
+    rm1();
+    try {
+      /* move each dot out of the time text and onto the bubble, so it sits beside it */
+      document.querySelectorAll('#msgs .b.me').forEach(b => {
+        const t = b.querySelector('small .tk.dot'); if (t) b.append(t);
+      });
+    } catch (e) { console.warn('[dot]', e); }
+  };
+  if (!document.getElementById('chat').hidden) renderMsgs();
+})();
+</script>
 
 </body>
 </html>
