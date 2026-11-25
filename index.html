@@ -4324,7 +4324,7 @@ dialog h2{font-size:17px;font-weight:800}
   sync();
 })();
 </script>
-<!-- ===== ABSOL VIEW ONCE (photos and videos, one-to-one chats) ===== -->
+<!-- ===== ABSOL VIEW ONCE v2 (photos and videos, chats and groups) ===== -->
 <style>
 #onceView{width:96vw;max-width:640px;max-height:none;padding:10px;background:#000;margin:auto!important}
 #onceView img,#onceView video{display:block;width:100%;max-height:74vh;object-fit:contain}
@@ -4337,7 +4337,6 @@ dialog h2{font-size:17px;font-weight:800}
   const sheet = U('attSheet');
   if (!P2 || !sheet){ console.warn('[once] needs the media sharing block above this one'); return; }
 
-  /* icons */
   Object.assign(ICONS, {
     eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
     'eye-off': '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/>'
@@ -4365,13 +4364,16 @@ dialog h2{font-size:17px;font-weight:800}
     return (m._att = a);
   }
 
-  /* ---------- opened / not opened status (shared by both people) ---------- */
-  let once = {}, loaded = false, inited = null, ch = null;
+  /* ---------- opened / not opened status ---------- */
+  let once = {}, onceG = {}, loaded = false, loadedG = false, inited = null, ch = null;
   const appVisible = () => [...document.querySelectorAll('#app > section')].some(s => !s.hidden && s.id !== 'auth');
   async function loadOnce(){
-    const { data, error } = await sb.from('view_once').select('*');
-    if (error){ console.warn('[once]', error.message); return false; }
-    once = {}; (data || []).forEach(r => { once[r.path] = r; }); loaded = true; return true;
+    const r1 = await sb.from('view_once').select('*');
+    if (r1.error) console.warn('[once]', r1.error.message);
+    else { once = {}; (r1.data || []).forEach(r => { once[r.path] = r; }); loaded = true; }
+    const r2 = await sb.from('view_once_g').select('*').order('created_at', { ascending: false }).limit(2000);
+    if (r2.error) console.warn('[once group]', r2.error.message);
+    else { onceG = {}; (r2.data || []).forEach(r => { (onceG[r.path] = onceG[r.path] || {})[r.user_id] = r; }); loadedG = true; }
   }
   function redraw(){
     if (U('chat').hidden) return;
@@ -4385,29 +4387,56 @@ dialog h2{font-size:17px;font-weight:800}
         if (p.eventType === 'DELETE'){ if (p.old && p.old.path) delete once[p.old.path]; }
         else if (p.new && p.new.path) once[p.new.path] = p.new;
         redraw();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'view_once_g' }, p => {
+        if (p.eventType === 'DELETE'){ const o = p.old || {}; if (o.path && o.user_id && onceG[o.path]) delete onceG[o.path][o.user_id]; }
+        else if (p.new && p.new.path) (onceG[p.new.path] = onceG[p.new.path] || {})[p.new.user_id] = p.new;
+        redraw();
       }).subscribe();
   }
   setInterval(() => {
     if (me && appVisible() && inited !== me.id){
       inited = me.id;
       loadOnce().then(() => { redraw(); live(); });
-    } else if (!me && inited){ inited = null; once = {}; loaded = false; if (ch){ sb.removeChannel(ch); ch = null; } }
+    } else if (!me && inited){
+      inited = null; once = {}; onceG = {}; loaded = loadedG = false;
+      if (ch){ sb.removeChannel(ch); ch = null; }
+    }
   }, 1000);
 
   /* ---------- how a view-once item looks in the chat ---------- */
-  function node(a, m){
-    const mine = m.sender_id === me.id, row = once[a.p], opened = !!(row && row.opened_at), gone = loaded && !row;
-    const kind = a.ty === 'video' ? 'Video' : 'Photo';
-    let sub, tap = false;
-    if (opened) sub = 'Opened';
-    else if (gone) sub = 'No longer available';
-    else if (mine) sub = 'View once · not opened yet';
-    else { sub = 'Tap to view once'; tap = true; }
+  function card(a, sub, off, tap){
     const r = el('div', { className: 'att once' },
-      el('div', { className: 'ai', textContent: '{{' + (opened || gone ? 'eye-off' : 'eye') + '}}' }),
-      el('div', { className: 'tx' }, el('b', { textContent: kind }), el('span', { className: 'as', textContent: sub })));
-    if (tap) r.onclick = () => openOnce(a);
-    else r.style.cursor = 'default';
+      el('div', { className: 'ai', textContent: '{{' + (off ? 'eye-off' : 'eye') + '}}' }),
+      el('div', { className: 'tx' }, el('b', { textContent: a.ty === 'video' ? 'Video' : 'Photo' }), el('span', { className: 'as', textContent: sub })));
+    if (!tap) r.style.cursor = 'default';
+    return r;
+  }
+  function node(a, m){
+    const mine = m.sender_id === me.id;
+    let sub, off = false, tap = false;
+    if (m.group_id){
+      const rows = Object.values(onceG[a.p] || {});
+      if (mine){
+        const tot = rows.length, op = rows.filter(r => r.opened_at).length;
+        if (!loadedG || !tot) sub = 'View once';
+        else if (op === tot){ sub = 'Opened by everyone'; off = true; }
+        else sub = op ? 'Opened by ' + op + ' of ' + tot : 'View once · not opened yet';
+      } else {
+        const row = (onceG[a.p] || {})[me.id];
+        if (row && row.opened_at){ sub = 'Opened'; off = true; }
+        else if (row || !loadedG){ sub = 'Tap to view once'; tap = true; }
+        else { sub = 'No longer available'; off = true; }
+      }
+    } else {
+      const row = once[a.p], opened = !!(row && row.opened_at);
+      if (opened){ sub = 'Opened'; off = true; }
+      else if (loaded && !row){ sub = 'No longer available'; off = true; }
+      else if (mine) sub = 'View once · not opened yet';
+      else { sub = 'Tap to view once'; tap = true; }
+    }
+    const r = card(a, sub, off, tap);
+    if (tap) r.onclick = () => openOnce(a, m);
     return r;
   }
   /* goes first so the normal media code skips these messages */
@@ -4431,7 +4460,7 @@ dialog h2{font-size:17px;font-weight:800}
     } catch {}
   };
 
-  /* ---------- opening: claim, download, delete from the server, show once ---------- */
+  /* ---------- opening ---------- */
   const vd = el('dialog', { id: 'onceView' }); document.body.appendChild(vd);
   let objUrl = null, busy = false;
   vd.addEventListener('close', () => { vd.replaceChildren(); if (objUrl){ URL.revokeObjectURL(objUrl); objUrl = null; } });
@@ -4445,23 +4474,31 @@ dialog h2{font-size:17px;font-weight:800}
       el('div', { className: 'row', style: 'margin-top:8px' }, el('button', { className: 'ghost', textContent: 'Close', onclick: () => vd.close() })));
     vd.showModal();
   }
-  async function openOnce(a){
+  async function openOnce(a, m){
     if (busy) return; busy = true;
-    let claimed = false;
+    const grp = !!m.group_id; let claimed = false;
     try {
       pop('Opening…'); await paint();
-      const { data: ok, error } = await sb.rpc('claim_once', { p_path: a.p });
+      const { data: ok, error } = await sb.rpc(grp ? 'claim_once_g' : 'claim_once', { p_path: a.p });
       if (error) throw error;
       if (!ok){ unpop(); toast('This was already opened'); await loadOnce(); redraw(); return; }
       claimed = true;
-      once[a.p] = Object.assign({ path: a.p, recipient_id: me.id }, once[a.p] || {}, { opened_at: new Date().toISOString() });
-      const dl = await sb.storage.from(BUCKET).download(a.p);
-      if (dl.error) throw dl.error;
-      const buf = new Uint8Array(await dl.data.arrayBuffer());
-      const pt = nacl.secretbox.open(buf.subarray(24), buf.subarray(0, 24), unb64(a.k));
-      if (!pt) throw new Error('Could not decrypt the file');
-      /* the file leaves the server as soon as it is on this phone */
-      sb.storage.from(BUCKET).remove([a.p]).then(r => { if (r.error || !(r.data || []).length) console.warn('[once] file not removed from storage', r.error && r.error.message); });
+      const nowIso = new Date().toISOString();
+      if (grp){ const o = (onceG[a.p] = onceG[a.p] || {}); o[me.id] = Object.assign({ path: a.p, user_id: me.id }, o[me.id] || {}, { opened_at: nowIso }); }
+      else once[a.p] = Object.assign({ path: a.p, recipient_id: me.id }, once[a.p] || {}, { opened_at: nowIso });
+      let pt = null, derr = null;
+      try {
+        const dl = await sb.storage.from(BUCKET).download(a.p);
+        if (dl.error) throw dl.error;
+        const buf = new Uint8Array(await dl.data.arrayBuffer());
+        pt = nacl.secretbox.open(buf.subarray(24), buf.subarray(0, 24), unb64(a.k));
+        if (!pt) throw new Error('Could not decrypt the file');
+      } catch (e) { derr = e; }
+      /* tell the server this person is finished (so the last person can remove the file) */
+      if (grp) await sb.rpc('done_once_g', { p_path: a.p });
+      if (derr) throw derr;
+      /* the file leaves the server once nobody else still needs it */
+      sb.storage.from(BUCKET).remove([a.p]).then(r => { if (!grp && (r.error || !(r.data || []).length)) console.warn('[once] file not removed from storage', r.error && r.error.message); });
       unpop();
       showView(a, URL.createObjectURL(new Blob([pt], { type: a.m || (a.ty === 'video' ? 'video/mp4' : 'image/jpeg') })));
       redraw();
@@ -4481,9 +4518,9 @@ dialog h2{font-size:17px;font-weight:800}
   }
   let sending = false;
   async function sendOnce(f){
-    const peer = current;
-    if (!peer || curGroup) return toast('View once works in one-to-one chats only');
-    if (st(peer).blocked) return toast('Unblock this user first');
+    const gid = curGroup, peer = current, grp = !!gid;
+    if (grp ? !groups[gid] : !peer) return;
+    if (!grp && st(peer).blocked) return toast('Unblock this user first');
     const vid = /^video\//.test(f.type), img = /^image\//.test(f.type);
     if (!vid && !img) return toast('Choose a photo or a video');
     if (sending) return; sending = true;
@@ -4498,23 +4535,37 @@ dialog h2{font-size:17px;font-weight:800}
       path = me.id + '/' + crypto.randomUUID();
       const up = await sb.storage.from(BUCKET).upload(path, new Blob([nonce, box]), { contentType: 'application/octet-stream' });
       if (up.error) throw up.error;
-      const ins = await sb.from('view_once').insert({ path, recipient_id: peer });
-      if (ins.error) throw ins.error;
+      if (grp){
+        const rr = await sb.rpc('send_once_g', { p_path: path, p_group: String(gid) });
+        if (rr.error) throw rr.error;
+      } else {
+        const ins = await sb.from('view_once').insert({ path, recipient_id: peer });
+        if (ins.error) throw ins.error;
+      }
       rowOk = true;
       const att = { ty: vid ? 'video' : 'image', p: path, k: b64(key), m: mime, n: 'View once', s: buf.length, o: 1 };
-      const packed = P2.PFX + JSON.stringify({ t: MARK + 'View once ' + (vid ? 'video' : 'photo'), a: att });
-      await loadProfiles([peer]);
-      const n2 = nacl.randomBytes(nacl.box.nonceLength);
-      const r = await sb.from('messages').insert({ sender_id: me.id, recipient_id: peer,
-        ciphertext: b64(nacl.box(nacl.util.decodeUTF8(packed), n2, unb64(profiles[peer].public_key), me.sk)), nonce: b64(n2) }).select().single();
-      if (r.error) throw r.error;
-      let ex = msgs.find(x => x.id === r.data.id);
-      if (!ex){ r.data._t = packed; msgs.push(r.data); ex = r.data; }
+      const packed = P2.PFX + JSON.stringify({ t: MARK + 'View once ' + (vid ? 'video' : 'photo'), a: att }), data = nacl.util.decodeUTF8(packed);
+      let row, arr;
+      if (grp){
+        let g = groups[gid], K = g && gkeys[g.id + ':' + g.epoch];
+        if (!K){ await loadGroups(false); g = groups[gid]; K = g && gkeys[g.id + ':' + g.epoch]; }
+        if (!K) throw new Error('Group key not ready');
+        const n2 = nacl.randomBytes(nacl.secretbox.nonceLength);
+        const r = await sb.from('group_messages').insert({ group_id: gid, sender_id: me.id, epoch: g.epoch, ciphertext: b64(nacl.secretbox(data, n2, K)), nonce: b64(n2) }).select().single();
+        if (r.error) throw r.error; row = r.data; arr = gmsgs;
+      } else {
+        await loadProfiles([peer]);
+        const n2 = nacl.randomBytes(nacl.box.nonceLength);
+        const r = await sb.from('messages').insert({ sender_id: me.id, recipient_id: peer, ciphertext: b64(nacl.box(data, n2, unb64(profiles[peer].public_key), me.sk)), nonce: b64(n2) }).select().single();
+        if (r.error) throw r.error; row = r.data; arr = msgs;
+      }
+      let ex = arr.find(x => x.id === row.id);
+      if (!ex){ row._t = packed; arr.push(row); ex = row; }
       ex._att = att;
-      once[path] = { path, sender_id: me.id, recipient_id: peer, opened_at: null };
+      if (grp) await loadOnce(); else once[path] = { path, sender_id: me.id, recipient_id: peer, opened_at: null };
       renderList(); if (!U('chat').hidden) renderMsgs();
     } catch (e) {
-      if (rowOk) sb.from('view_once').delete().eq('path', path).then(() => {}, () => {});
+      if (rowOk) (grp ? sb.from('view_once_g') : sb.from('view_once')).delete().eq('path', path).then(() => {}, () => {});
       if (path) sb.storage.from(BUCKET).remove([path]).then(() => {}, () => {});
       toast('Could not send: ' + friendly(e));
     } finally { unpop(); sending = false; }
@@ -4524,13 +4575,11 @@ dialog h2{font-size:17px;font-weight:800}
   const fi = el('input', { type: 'file', accept: 'image/*,video/*', hidden: true }); document.body.appendChild(fi);
   const btn = el('button', { className: 'act' }, el('span', { textContent: '{{eye}}' }), 'View once');
   btn.onclick = () => {
-    if (curGroup) return toast('View once works in one-to-one chats only');
     sheet.close();
     fi.onchange = async () => { const f = fi.files[0]; fi.value = ''; if (f) await sendOnce(f); };
     fi.click();
   };
   sheet.querySelector('.grid').append(btn);
-  new MutationObserver(() => { btn.hidden = !!curGroup; }).observe(sheet, { attributes: true, attributeFilter: ['open'] });
 })();
 </script>
 <!-- ===== END VIEW ONCE ===== -->
