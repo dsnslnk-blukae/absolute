@@ -5184,6 +5184,162 @@ body.pblur #app,body.pblur dialog{filter:blur(26px)}
 })();
 </script>
 <!-- ===== END ABSOL SETTINGS PATCH 3 ===== -->
+<!-- ===== ABSOL SETTINGS PATCH 4: change password, sessions, delete account, security code alerts ===== -->
+<script>
+(function(){
+  const SX = window.SX;
+  if (!SX || !SX.hook){ console.warn('[patch4] needs Patches 1 to 3'); return; }
+  Object.assign(SX.defs, { ka: true });
+  Object.assign(SETTITLES, { sessions: 'Active sessions' });
+
+  /* ---------- small form dialog ---------- */
+  function form(title, hint, fields, okText, run, danger){
+    const ins = fields.map(f => el('input', { type: f[1] || 'password', placeholder: f[0], autocomplete: 'off', style: 'margin-top:8px' }));
+    const msg = el('div', { className: 'hint', style: 'color:var(--danger);margin-top:8px' });
+    const go = el('button', { textContent: okText, style: danger ? 'background:var(--danger);color:#fff' : '', onclick: async () => {
+      go.disabled = true; msg.textContent = '';
+      let err; try { err = await run(ins.map(i => i.value)); } catch (e) { err = friendly(e); }
+      go.disabled = false;
+      if (err) msg.textContent = err; else d.close();
+    } });
+    const d = el('dialog', {}, el('h2', { textContent: title }), hint ? el('p', { className: 'hint', textContent: hint }) : '', ...ins, msg,
+      el('div', { className: 'row', style: 'margin-top:12px' }, el('button', { className: 'ghost', textContent: 'Cancel', onclick: () => d.close() }), go));
+    d.addEventListener('close', () => d.remove());
+    document.body.appendChild(d); d.showModal(); ins[0].focus();
+  }
+  async function reauth(pw){
+    const { error } = await sb.auth.signInWithPassword({ email: me.email, password: pw });
+    return !error;
+  }
+
+  /* ---------- change password ---------- */
+  function changePassword(){
+    form('Change password', 'This is also the password that opens your locked chats.',
+      [['Current password'], ['New password (8+ characters)'], ['Repeat new password']], 'Change', async ([cur, n1, n2]) => {
+        if (!cur) return 'Enter your current password';
+        if (n1.length < 8) return 'New password must be at least 8 characters';
+        if (n1 !== n2) return 'The new passwords don’t match';
+        if (n1 === cur) return 'Choose a different password';
+        if (!(await reauth(cur))) return 'Current password is wrong';
+        const { error } = await sb.auth.updateUser({ password: n1 });
+        if (error) return friendly(error);
+        toast('Password changed');
+        setTimeout(() => { if (confirm('Also log out your other devices?')) logoutOthers(); }, 400);
+        return null;
+      });
+  }
+
+  /* ---------- sessions ---------- */
+  async function logoutOthers(){
+    if (!confirm('Log out every other device? They will need your password to sign in again.')) return;
+    const { error } = await sb.auth.signOut({ scope: 'others' });
+    if (error) return toast('Could not log out others: ' + friendly(error));
+    toast('Other devices logged out');
+    if (sview === 'sessions' && !$('settings').hidden) rerender();
+  }
+  function uaName(s){
+    s = s || '';
+    const os = /iPhone|iPad/.test(s) ? 'iOS' : /Android/.test(s) ? 'Android' : /Windows/.test(s) ? 'Windows' : /Mac OS/.test(s) ? 'macOS' : /Linux/.test(s) ? 'Linux' : 'Unknown device';
+    const br = /Edg\//.test(s) ? 'Edge' : /OPR\//.test(s) ? 'Opera' : /Firefox|FxiOS/.test(s) ? 'Firefox' : /Chrome|CriOS/.test(s) ? 'Chrome' : /Safari/.test(s) ? 'Safari' : 'Browser';
+    return br + ' on ' + os;
+  }
+  VIEWS.sessions = b => {
+    const box = el('div', {}, empty('Loading…'));
+    b.append(box, el('button', { className: 'wide', textContent: 'Log out all other devices', onclick: logoutOthers }),
+      el('p', { className: 'hint', textContent: 'A device you end stays signed in for up to an hour in rare cases, until its access pass expires. Change your password if you think someone else has it.' }));
+    sb.rpc('my_sessions').then(({ data, error }) => {
+      if (!box.isConnected) return;
+      if (error){ box.replaceChildren(empty('Could not load sessions. Run the Patch 4 SQL in Supabase first.')); return; }
+      if (!data || !data.length){ box.replaceChildren(empty('No sessions found')); return; }
+      box.replaceChildren(scard(...data.map(s => el('div', { className: 'srow' },
+        el('div', { style: 'min-width:0' }, el('b', { textContent: uaName(s.user_agent) + (s.is_current ? ' (this device)' : '') }),
+          el('div', { className: 'r', textContent: 'Active ' + fmtTime(s.updated_at) + (s.ip ? ' · ' + s.ip : '') })),
+        s.is_current ? '' : chipBtn('End', async () => {
+          if (!confirm('End this session?')) return;
+          const r = await sb.rpc('end_session', { p_id: s.id });
+          if (r.error) return toast('Could not end it: ' + friendly(r.error));
+          toast('Session ended'); rerender();
+        })))));
+    });
+  };
+
+  /* ---------- delete account ---------- */
+  function deleteAccount(){
+    form('Delete account', 'This permanently deletes your profile, your sent and received messages (for both sides), your files and your settings. It cannot be undone.',
+      [['Your password'], ['Type DELETE to confirm', 'text']], 'Delete forever', async ([pw, word]) => {
+        if (word.trim() !== 'DELETE') return 'Type DELETE in capital letters';
+        if (!pw || !(await reauth(pw))) return 'Wrong password';
+        const uid = me.id;
+        const { error } = await sb.rpc('delete_my_account');
+        if (error) return /PGRST202|Could not find/i.test(error.message || '') ? 'Run the Patch 4 SQL in Supabase first' : friendly(error);
+        try {   /* best effort: remove the files you uploaded */
+          const bk = sb.storage.from('chat-media'), { data } = await bk.list(uid, { limit: 1000 });
+          if (data && data.length) await bk.remove(data.map(f => uid + '/' + f.name));
+        } catch {}
+        for (let i = localStorage.length - 1; i >= 0; i--){ const k = localStorage.key(i); if (k && k.includes(uid)) localStorage.removeItem(k); }
+        toast('Account deleted');
+        await logout();
+        return null;
+      }, true);
+  }
+
+  /* ---------- security code change alerts ---------- */
+  const kk = () => 'absol-kn:' + me.id, ka = () => 'absol-ka:' + me.id;
+  const rd = k => { try { return JSON.parse(localStorage.getItem(k)) || {}; } catch { return {}; } };
+  const wr = (k, o) => { try { localStorage.setItem(k, JSON.stringify(o)); } catch {} };
+  const banner = el('div', { className: 'banner', id: 'keyAlert', hidden: true }, el('span', { id: 'kaT' }),
+    el('button', { textContent: 'Verify', onclick: () => showSafety() }),
+    el('button', { className: 'ghost', textContent: 'OK', onclick: () => {
+      const id = current; if (!id || curGroup) return;
+      const known = rd(kk()), al = rd(ka());
+      if (al[id]){ known[id] = al[id]; delete al[id]; wr(kk(), known); wr(ka(), al); }
+      renderAlert();
+    } }));
+  $('msgs').before(banner);
+  function renderAlert(){
+    const id = me && !curGroup && current, on = id && SX.get('ka') && rd(ka())[id];
+    banner.hidden = !on;
+    if (on) $('kaT').textContent = dname(id) + '’s security code changed. They may have a new phone or reinstalled the app. Verify it before sharing anything sensitive.';
+  }
+  function check(ids){
+    if (!me) return;
+    const known = rd(kk()), al = rd(ka()); let k2 = false, a2 = false;
+    [...new Set(ids || [])].forEach(id => {
+      const p = profiles[id]; if (!id || id === me.id || !p || !p.public_key) return;
+      if (!known[id]){ known[id] = p.public_key; k2 = true; }
+      else if (known[id] !== p.public_key){
+        if (!SX.get('ka')){ known[id] = p.public_key; k2 = true; }
+        else if (al[id] !== p.public_key){ al[id] = p.public_key; a2 = true; toast('Security code changed for ' + dname(id)); }
+      }
+    });
+    if (k2) wr(kk(), known);
+    if (a2){ wr(ka(), al); if (!$('chat').hidden) renderAlert(); }
+  }
+  const _lp = loadProfiles;
+  loadProfiles = async function(ids, force){
+    const r = await _lp(ids, force);
+    try { check(ids); } catch (e) { console.warn('[alerts]', e); }
+    return r;
+  };
+  const _cc = chatChrome, _gc = groupChrome;
+  chatChrome = function(){ _cc(); try { renderAlert(); } catch {} };
+  groupChrome = function(){ _gc(); banner.hidden = true; };
+
+  /* ---------- rows on the Account and security screen ---------- */
+  SX.hook('account', b => {
+    const del = srow('Delete account', '{{chev-right}}', deleteAccount); del.firstChild.classList.add('red');
+    b.append(el('div', { className: 'sec', textContent: 'Sign-in' }),
+      scard(srow('Change password', '{{chev-right}}', changePassword),
+        srow('Active sessions', '{{chev-right}}', () => gotoView('sessions')),
+        srow('Log out other devices', chipBtn('Log out', logoutOthers))),
+      el('div', { className: 'sec', textContent: 'Alerts' }),
+      scard(srow('Security code change alerts', pill(!!SX.get('ka'), v => { SX.set('ka', v); renderAlert(); }))),
+      el('p', { className: 'hint', textContent: 'Shows a warning in a chat when your contact’s security code changes, for example after a new phone. Only changes from now on are detected.' }),
+      el('div', { className: 'sec', textContent: 'Danger zone' }), scard(del));
+  });
+})();
+</script>
+<!-- ===== END ABSOL SETTINGS PATCH 4 ===== -->
 
 </body>
 </html>
