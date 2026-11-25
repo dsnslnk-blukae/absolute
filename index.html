@@ -4020,6 +4020,41 @@ dialog h2{font-size:17px;font-weight:800}
   if (!document.getElementById('chat').hidden) renderMsgs();
 })();
 </script>
+<!-- ===== ABSOL MINIMAL THEMES: new Default + Dark themes, and every older theme softened ===== -->
+<style>
+/* a few leftover bright colours, softened */
+.i.online{color:#7cc29b}
+.cb.red{background:#c4575c}
+.cb.green{background:#3f9a6b}
+</style>
+<script>
+(function(){
+  const DG = '#d9858f';                       /* soft red for warnings */
+  const mk = (n, hue, v) => { v.danger = DG; v.partner = v.accent2; v.hi = v.accent; return { n, hue, v }; };
+  /* Rule for all themes: dark, low saturation, soft text, and a sent bubble in a deep tint of the accent
+     (not a bright fill), so nothing shouts. */
+  const T = {
+    default: mk('Default', 195, { bg:'#121517', surface:'#181c1f', surface2:'#1f2427', border:'#272d31', text:'#d4dadc', muted:'#85929a',
+      accent:'#86a4aa', accent2:'#abc3c7', 'accent-text':'#0f1719', mine:'#2c3d41', 'mine-text':'#dbe7e9', theirs:'#1f2427' }),
+    dark: mk('Dark', 240, { bg:'#131314', surface:'#19191b', surface2:'#212124', border:'#29292d', text:'#d6d6d9', muted:'#85858c',
+      accent:'#a2a2ab', accent2:'#c0c0c8', 'accent-text':'#16161a', mine:'#303035', 'mine-text':'#e3e3e6', theirs:'#212124' }),
+    lavender: mk('Lavender', 262, { bg:'#15131c', surface:'#1b1923', surface2:'#23202d', border:'#2b2836', text:'#d9d6e3', muted:'#8b869b',
+      accent:'#9b8fc4', accent2:'#bdb4dd', 'accent-text':'#18141f', mine:'#3a3453', 'mine-text':'#e4e0ef', theirs:'#25222f' }),
+    blue: mk('Blue', 214, { bg:'#101419', surface:'#161b21', surface2:'#1e252d', border:'#262e37', text:'#d3d9e0', muted:'#8793a1',
+      accent:'#7b9cc4', accent2:'#a3bbd8', 'accent-text':'#0e151d', mine:'#2f4157', 'mine-text':'#dde6f0', theirs:'#1e252d' }),
+    green: mk('Dark green', 152, { bg:'#111613', surface:'#171d19', surface2:'#1f2722', border:'#27312b', text:'#d3dcd6', muted:'#87978c',
+      accent:'#7fae94', accent2:'#a6c8b5', 'accent-text':'#0e1812', mine:'#2f4a3c', 'mine-text':'#dcebe2', theirs:'#1f2722' }),
+    orange: mk('Orange', 28, { bg:'#171210', surface:'#1e1814', surface2:'#27201a', border:'#30271f', text:'#dcd3ca', muted:'#9a8b7c',
+      accent:'#c49366', accent2:'#dcb894', 'accent-text':'#1c130b', mine:'#4a3a2c', 'mine-text':'#eadfd2', theirs:'#271f19' }),
+    rose: mk('Rose sunset', 345, { bg:'#181214', surface:'#1f181b', surface2:'#292025', border:'#32282d', text:'#e0d4d8', muted:'#9d8a92',
+      accent:'#c08a9b', accent2:'#d9b0bd', 'accent-text':'#1d1014', mine:'#4a3039', 'mine-text':'#ecdfe3', theirs:'#292025' })
+  };
+  /* rebuild the theme list in this order: Default and Dark first */
+  Object.keys(THEMES).forEach(k => delete THEMES[k]);
+  ['default', 'dark', 'lavender', 'blue', 'green', 'orange', 'rose'].forEach(k => { THEMES[k] = T[k]; });
+  applyTheme(localStorage.getItem('absol-theme') || 'lavender');
+})();
+</script>
 
 </body>
 </html>
