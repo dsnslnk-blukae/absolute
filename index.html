@@ -3912,5 +3912,70 @@ dialog h2{font-size:17px;font-weight:800}
   if (!U('details').hidden) renderMedia();
 })();
 </script>
+  <!-- ===== ABSOL BUBBLES: compact bubbles, forwarded and reply outside, single-dot receipt =====
+     Paste at the very bottom of your HTML, after your last block (the media/fonts fix) and before </body>.
+     Nothing is deleted. To undo, delete this block. -->
+<style>
+/* ---- compact, elegant bubbles ---- */
+#msgs{gap:4px;padding:8px 12px}
+#msgs .b{font-size:14.5px;line-height:1.32;padding:6px 11px;max-width:78%}
+#msgs .gcol .b{max-width:100%}
+#msgs .b.me,#msgs .b.them{border-radius:15px!important}
+#msgs .b.me{border-bottom-right-radius:5px!important}
+#msgs .b.them{border-bottom-left-radius:5px!important}
+#msgs .b small{font-size:10px;margin-left:7px;opacity:.6}
+
+/* photos and files fit the bubble */
+#msgs .b:has(.mm){padding:3px}
+#msgs .b:has(.mm) small{display:block;text-align:right;margin:2px 6px 1px 0}
+#msgs .mm img{width:min(52vw,210px);max-height:260px;min-height:90px;border-radius:12px}
+#msgs .att{min-width:170px;gap:9px}
+#msgs .att .ai{width:36px;height:36px;border-radius:11px}
+#msgs .att b{font-size:14px;max-width:150px}
+#msgs .att .as{font-size:11px}
+
+/* ---- forwarded label and reply quote sit outside the bubble ---- */
+#msgs .out.me{align-self:flex-end}
+#msgs .out.them{align-self:flex-start}
+#msgs .fwdl.out{display:block;max-width:78%;margin:0 8px -1px;font-size:11px;font-style:italic;color:var(--muted);opacity:1}
+#msgs .me.fwdl.out{text-align:right}
+#msgs .rq.out{display:block;max-width:min(68%,260px);margin:0 4px -2px;padding:4px 10px;background:var(--surface2);border:0;border-left:2px solid var(--accent);border-radius:10px;font-size:12px;color:var(--text);cursor:pointer}
+#msgs .rq.out.me{border-left:0;border-right:2px solid var(--accent);text-align:right}
+#msgs .rq.out b{display:block;font-size:11px;color:var(--accent)}
+#msgs .rq.out span{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---- one small dot instead of ticks: white = sent, green = read ---- */
+.tk.dot{display:inline-block;width:7px;height:7px;margin-left:6px;border-radius:50%;background:#fff;border:1px solid rgba(0,0,0,.3);vertical-align:middle;font-size:0;letter-spacing:0;opacity:1}
+.tk.dot.read{background:#22d36b;border-color:rgba(0,0,0,.35)}
+.tk.dot.pend{background:transparent;border-color:currentColor;opacity:.6}
+</style>
+<script>
+(function(){
+  const rm0 = renderMsgs;
+  renderMsgs = function(){
+    rm0();
+    try { tidy(); } catch (e) { console.warn('[bubbles]', e); }
+  };
+  function tidy(){
+    const bx = document.getElementById('msgs');
+    const atEnd = bx.scrollHeight - bx.scrollTop - bx.clientHeight < 6;
+    bx.querySelectorAll('.b').forEach(b => {
+      const side = b.classList.contains('me') ? 'me' : 'them';
+      /* move the forwarded label and the reply quote out, just above the bubble */
+      b.querySelectorAll(':scope > .fwdl, :scope > .rq').forEach(x => { x.classList.add('out', side); b.before(x); });
+      /* turn the ticks into one small dot */
+      const t = b.querySelector('.tk');
+      if (t && !t.classList.contains('dot')){
+        const read = t.classList.contains('rd'), s = t.textContent.trim();
+        t.className = 'tk dot ' + (s === '…' ? 'pend' : (s === '✓✓' && read) ? 'read' : 'sent');
+        t.textContent = '';
+      }
+    });
+    if (atEnd) bx.scrollTop = bx.scrollHeight;
+  }
+  if (!document.getElementById('chat').hidden) renderMsgs();
+})();
+</script>
+
 </body>
 </html>
