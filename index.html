@@ -4055,6 +4055,50 @@ dialog h2{font-size:17px;font-weight:800}
   applyTheme(localStorage.getItem('absol-theme') || 'lavender');
 })();
 </script>
+<!-- ===== ABSOL CALLS + CHAT FIX ===== -->
+<style>
+/* 1) call history: remove the left icon (the call-back button on the right stays) */
+.callrow .cico{display:none}
+
+/* 2) one-to-one chats: no names in reply chips or the reply bar (groups keep them) */
+#msgs.dm .rq.out b{display:none}
+#chat.dm #rbar b{display:none}
+
+/* 3) less empty space on the right of the chat */
+#msgs{padding-right:6px}
+#msgs .b.hd{margin-right:18px}
+#msgs .out.me.hd{margin-right:18px}
+#msgs .b.me > .tk.dot{right:-15px}
+</style>
+<script>
+(function(){
+  /* mark whether the open chat is one-to-one or a group */
+  const rm3 = renderMsgs;
+  renderMsgs = function(){
+    const dm = !curGroup;
+    document.getElementById('chat').classList.toggle('dm', dm);
+    document.getElementById('msgs').classList.toggle('dm', dm);
+    rm3();
+  };
+
+  /* call history: load the profile of anyone in the list we do not know yet (fixes "Unknown") */
+  const AC = window.AbsolCall, tried = new Set();
+  if (AC && AC.render){
+    const r0 = AC.render;
+    AC.render = function(){
+      r0();
+      try {
+        if (!me) return;
+        const a = JSON.parse(localStorage.getItem('absol-calls:' + me.id) || '[]');
+        const miss = [...new Set(a.map(e => e.peer))].filter(id => id && !profiles[id] && !tried.has(id));
+        if (miss.length){ miss.forEach(id => tried.add(id)); loadProfiles(miss).then(() => r0()); }
+      } catch (e) { console.warn('[calls fix]', e); }
+    };
+    if (me) AC.render();
+  }
+  if (!document.getElementById('chat').hidden) renderMsgs();
+})();
+</script>
 
 </body>
 </html>
