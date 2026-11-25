@@ -3610,5 +3610,229 @@ input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:d
 })();
 </script>
 <!-- ===== END MEDIA SHARING ===== -->
+  <!-- ===== UI PATCH 1 START (paste at the very bottom, right before </body>. No SQL needed) ===== -->
+<style>
+:root{--r-lg:22px;--r-md:15px;--ease:cubic-bezier(.22,1,.36,1);
+ --line:color-mix(in srgb,var(--accent) 18%,var(--border));
+ --card:linear-gradient(160deg,color-mix(in srgb,var(--surface2) 90%,var(--accent) 5%),var(--surface));
+ --elev:0 8px 22px rgba(0,0,0,.34)}
+*,*::before,*::after{corner-shape:round!important}
+#app{background:radial-gradient(110% 46% at 50% -6%,color-mix(in srgb,var(--partner) 24%,transparent),transparent 62%),radial-gradient(80% 36% at 100% 100%,color-mix(in srgb,var(--accent) 12%,transparent),transparent 62%),var(--bg)}
+
+/* floating top bars */
+.top{margin:10px 12px 8px;padding:9px 12px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--elev)}
+.brand{font-size:22px}
+.top input{height:40px;padding:0 12px;border-radius:var(--r-md)}
+.chead{margin:10px 12px 6px!important;padding:8px 10px!important;border:1px solid var(--line)!important;border-radius:var(--r-lg)!important;background:var(--card)!important;box-shadow:var(--elev)}
+.iconbtn{width:40px;height:40px;border-radius:13px;background:color-mix(in srgb,var(--accent) 14%,var(--surface2));border:1px solid var(--line)}
+.searchpill{border-radius:var(--r-md);background:color-mix(in srgb,var(--accent) 12%,var(--surface2));border:1px solid var(--line)}
+.av{border-radius:30%;box-shadow:0 0 0 2px color-mix(in srgb,var(--partner) 30%,transparent)}
+.av.grp{border-radius:28%}
+#avatarBtn{border-radius:30%}
+
+/* cards everywhere */
+.switch{margin:2px 12px 8px;border-radius:var(--r-lg);background:var(--card);border:1px solid var(--line)}
+.switch .ind,.switch button{border-radius:calc(var(--r-lg) - 6px)}
+.card{border-radius:var(--r-lg)!important;background:color-mix(in srgb,var(--bg) 72%,#000);border-color:var(--line)}
+.convo{margin:6px 10px;padding:12px 13px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--card);box-shadow:0 4px 14px rgba(0,0,0,.22)}
+.convo.unr{border-color:color-mix(in srgb,var(--accent) 60%,transparent);box-shadow:inset 3px 0 0 var(--accent),0 4px 14px rgba(0,0,0,.22)}
+.convo.picked{border-color:var(--hi);box-shadow:0 0 0 2px color-mix(in srgb,var(--hi) 55%,transparent)}
+.ub{background:var(--grad)}
+.fab{background:var(--grad);border-radius:var(--r-lg);width:54px;height:54px}
+.sec{display:inline-block;margin:12px 0 4px 14px;padding:3px 10px;border-radius:9px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent2);font-size:11px}
+.scard,.dcard,.mbox{border-radius:var(--r-lg)!important;background:var(--card);border:1px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.2)}
+.sres,.lres,.act{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md)}
+.dprof,.hero{display:flex;flex-direction:column;align-items:center;gap:4px;padding:18px 12px;border-radius:var(--r-lg);border:1px solid var(--line);background:linear-gradient(160deg,color-mix(in srgb,var(--accent) 20%,var(--surface2)),var(--surface))}
+.chip{border-radius:13px;background:color-mix(in srgb,var(--accent) 14%,var(--surface2));color:var(--accent2);border:1px solid var(--line)}
+.chip.on{background:var(--grad);color:var(--accent-text);border-color:transparent}
+button{border-radius:var(--r-md)}
+.tag{background:var(--grad)}
+#chatSub.typ{color:var(--hi)}
+
+/* messages */
+#msgs{background:transparent;padding:10px 12px}
+.b.me,.b.them{border-radius:15px!important;padding:8px 13px}
+.b.me{background:var(--grad);border-bottom-right-radius:5px!important;box-shadow:0 4px 12px color-mix(in srgb,var(--accent) 22%,transparent)}
+.b.them{background:color-mix(in srgb,var(--theirs) 94%,transparent);border:1px solid color-mix(in srgb,var(--accent) 16%,transparent);border-bottom-left-radius:5px!important}
+.gname{font-weight:700}
+
+/* slim message bar */
+#composer{margin:0 10px calc(8px + env(safe-area-inset-bottom,0px));padding:6px;gap:6px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--card)!important;box-shadow:var(--elev)}
+#composer input{height:40px;padding:0 14px;font-size:15px;border-radius:var(--r-md);background:color-mix(in srgb,var(--bg) 60%,var(--surface2));border:1px solid transparent}
+#composer input:focus{outline:0;border-color:var(--hi);box-shadow:0 0 0 3px color-mix(in srgb,var(--hi) 26%,transparent)}
+#sendBtn,#plusBtn{width:40px;height:40px;border-radius:var(--r-md);background:var(--grad)}
+#plusBtn{background:color-mix(in srgb,var(--accent) 16%,var(--surface2))}
+#sendBtn .i,#plusBtn .i{width:19px;height:19px}
+#rbar,#ebar{margin:0 10px 6px;border:1px solid var(--line);border-radius:var(--r-md)}
+.blockbar{margin:0 10px 8px;border-radius:var(--r-lg);border:1px solid var(--line)}
+
+/* small popovers instead of big cards */
+.menu{min-width:176px;padding:6px;border-radius:var(--r-lg)!important;background:var(--card);border:1px solid var(--line);box-shadow:0 14px 34px rgba(0,0,0,.5);top:68px;right:14px}
+.menu button{display:flex;align-items:center;gap:10px;padding:9px 12px;font-size:14px;border-radius:12px;font-weight:600}
+.menu button .i{width:18px;height:18px;margin:0}
+.menu button:active{background:color-mix(in srgb,var(--accent) 18%,transparent)}
+#mact{background:rgba(5,3,10,.28)}
+.menu.mactm{position:fixed;left:auto;right:auto;bottom:auto;top:0;min-width:170px;max-width:250px}
+.b.pressed{box-shadow:0 0 0 2px var(--hi)!important}
+dialog{width:min(94vw,400px);margin:auto auto calc(12px + env(safe-area-inset-bottom,0px));padding:16px;border-radius:var(--r-lg)!important;background:var(--card);border:1px solid var(--line);max-height:74vh;overflow-y:auto;animation:dlgin .22s var(--ease)}
+@keyframes dlgin{from{transform:translateY(18px);opacity:0}}
+dialog::backdrop{background:rgba(5,3,10,.5)}
+dialog h2{font-size:17px;margin-bottom:8px}
+#mview{margin:auto!important}
+
+/* settings tiles, theme cards, call history */
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{display:flex;flex-direction:column;gap:3px;padding:14px;border-radius:var(--r-lg);border:1px solid var(--line);background:var(--card);box-shadow:0 4px 14px rgba(0,0,0,.2);cursor:pointer}
+.tile b{font-size:15px}
+.tile small{color:var(--muted);font-size:12px}
+.tile .ti{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;margin-bottom:8px;background:var(--grad);color:var(--accent-text)}
+.tile:nth-child(3n+2) .ti{background:linear-gradient(135deg,var(--partner),var(--hi))}
+.tile:nth-child(3n) .ti{background:linear-gradient(135deg,var(--hi),var(--accent))}
+.tile .ti .i{width:22px;height:22px;margin:0}
+.thm{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r-lg);border:2px solid transparent;cursor:pointer}
+.thm .sws{display:flex}
+.thm .sws i{width:26px;height:26px;border-radius:9px;margin-right:-6px;border:2px solid rgba(0,0,0,.35)}
+.thm b{flex:1;margin-left:10px}
+.thm.on{box-shadow:0 0 0 2px var(--hi)}
+.callrow .cico{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;flex:none;background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent2)}
+.callrow .cico.miss{background:color-mix(in srgb,var(--danger) 20%,transparent);color:var(--danger)}
+.callrow .cico .i{width:20px;height:20px;margin:0}
+.callrow .ck{color:var(--hi);flex:none}
+
+/* call screen aurora */
+#callUI{background:radial-gradient(80% 50% at 18% 8%,color-mix(in srgb,var(--accent) 40%,transparent),transparent 60%),radial-gradient(80% 50% at 88% 24%,color-mix(in srgb,var(--partner) 34%,transparent),transparent 60%),radial-gradient(90% 60% at 50% 100%,color-mix(in srgb,var(--hi) 22%,transparent),transparent 60%),var(--bg)}
+</style>
+<script>
+(function(){
+  /* 1) five colour families: deep base, primary, partner, highlight */
+  const mk = (n, hue, v) => ({ n, hue, v });
+  THEMES.lavender = mk('Lavender', 262, { bg:'#100b1e', surface:'#1a1330', surface2:'#241a40', text:'#f1ecff', muted:'#a79cc4', accent:'#b69cff', accent2:'#dccfff', 'accent-text':'#1a0f33', partner:'#f08ad8', hi:'#8ea2ff', mine:'#b69cff', 'mine-text':'#1c1033', theirs:'#2b2150', border:'#34285a' });
+  THEMES.orange   = mk('Orange', 28, { bg:'#170d07', surface:'#251609', surface2:'#33200f', text:'#fff2e8', muted:'#c9a88c', accent:'#ff9a3d', accent2:'#ffd2a1', 'accent-text':'#2a1100', partner:'#ff6b81', hi:'#ffc94d', mine:'#ff9a3d', 'mine-text':'#2a1100', theirs:'#3a2412', border:'#4a2f19' });
+  THEMES.blue     = mk('Blue', 214, { bg:'#08101f', surface:'#0f1b33', surface2:'#16264a', text:'#e9f1ff', muted:'#8ea6cf', accent:'#4d9bff', accent2:'#bfd9ff', 'accent-text':'#04122b', partner:'#22d3ee', hi:'#a78bfa', mine:'#4d9bff', 'mine-text':'#04122b', theirs:'#182a52', border:'#223a6b' });
+  THEMES.green    = mk('Dark green', 152, { bg:'#07130d', surface:'#0e1f16', surface2:'#15301f', text:'#e7f8ee', muted:'#8dbb9f', accent:'#34d399', accent2:'#b7f0d3', 'accent-text':'#03170d', partner:'#2dd4bf', hi:'#a3e635', mine:'#34d399', 'mine-text':'#03170d', theirs:'#17372a', border:'#1f4a35' });
+  THEMES.rose     = mk('Rose sunset', 345, { bg:'#1a0c14', surface:'#2a121f', surface2:'#3a1a2b', text:'#fff0f4', muted:'#d1a3b5', accent:'#ff6f91', accent2:'#ffc2d1', 'accent-text':'#2d0a16', partner:'#ffa86b', hi:'#ffcf70', mine:'#ff6f91', 'mine-text':'#2d0a16', theirs:'#3d1a2e', border:'#55273f' });
+
+  applyTheme = function(k){
+    const key = THEMES[k] ? k : 'lavender', t = THEMES[key], r = document.documentElement.style;
+    Object.entries(t.v).forEach(([a, b]) => r.setProperty('--' + a, b));
+    r.setProperty('--grad', 'linear-gradient(135deg,' + t.v.accent + ',' + t.v.partner + ')');
+    themeHue = t.hue; localStorage.setItem('absol-theme', key);
+    document.querySelector('meta[name=theme-color]').content = t.v.bg;
+    try { if (me){ renderList(); if (!document.getElementById('chat').hidden) renderMsgs(); } } catch {}
+  };
+
+  /* avatars use colours from the theme family */
+  avatar = function(name, cls){
+    const d = document.createElement('div'); d.className = 'av ' + (cls || '');
+    const n = name || '?'; d.textContent = n[0].toUpperCase();
+    const v = (THEMES[localStorage.getItem('absol-theme')] || THEMES.lavender).v;
+    const pal = [[v.accent, v.partner], [v.partner, v.hi], [v.hi, v.accent], [v.accent2, v.partner]];
+    let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    const p = pal[h % pal.length];
+    d.style.background = 'linear-gradient(135deg,' + p[0] + ',' + p[1] + ')'; d.style.color = v['accent-text'];
+    const ph = (cls || '').includes('grp') ? null : photoByName[n];
+    if (ph){ d.textContent = ''; d.style.backgroundImage = 'url("' + ph + '")'; d.style.backgroundSize = 'cover'; d.style.backgroundPosition = 'center'; }
+    return d;
+  };
+
+  /* group member names get their own colour from the palette */
+  if (window.P2) P2.decor.push((b, m) => {
+    const col = b.parentElement && b.parentElement.classList.contains('gcol') ? b.parentElement : null; if (!col) return;
+    const g = col.querySelector('.gname'); if (!g) return;
+    const v = THEMES[localStorage.getItem('absol-theme')].v, pal = [v.accent, v.partner, v.hi, v.accent2];
+    let h = 0; for (const c of String(m.sender_id)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    g.style.color = pal[h % pal.length];
+  });
+
+  /* 2) settings as tiles, themes as preview cards */
+  VIEWS.main = function(b){
+    const T = [['user', 'Profile', 'profile', 'Photo and bio'], ['lock', 'Locked chats', 'locks', 'Password chats'], ['shield', 'Privacy', 'privacy', 'Status and photo'],
+      ['block', 'Blocked', 'blocked', 'People you blocked'], ['bell', 'Notifications', 'notif', 'Sounds and mute'], ['palette', 'Theme', 'theme', 'Colour families']];
+    b.append(el('div', { className: 'tiles' }, ...T.map(([ic, t, v, s]) => el('div', { className: 'tile', onclick: () => gotoView(v) },
+      el('span', { className: 'ti', textContent: '{{' + ic + '}}' }), el('b', { textContent: t }), el('small', { textContent: s })))));
+  };
+  VIEWS.theme = function(b){
+    b.append(...Object.entries(THEMES).map(([k, t]) => el('div', { className: 'thm' + (prefs.theme === k ? ' on' : ''), style: 'background:' + t.v.surface + ';border-color:' + t.v.border,
+      onclick: () => { applyTheme(k); savePrefs({ theme: k }); rerender(); } },
+      el('div', { className: 'sws' }, ...[t.v.bg, t.v.accent, t.v.partner, t.v.hi].map(c => el('i', { style: 'background:' + c }))),
+      el('b', { textContent: t.n, style: 'color:' + t.v.text }),
+      prefs.theme === k ? el('span', { textContent: '{{check-circle}}', style: 'color:' + t.v.accent }) : '')));
+  };
+
+  /* profile hero card */
+  const ps = document.querySelector('#profile .sbody');
+  if (ps && !ps.querySelector('.hero')){ const hero = el('div', { className: 'hero' }); ps.prepend(hero); hero.append($('profAv'), $('profName'), $('profUser')); }
+
+  /* 3) message actions: a small card next to the pressed bubble */
+  let pressed = null;
+  const msgs$ = $('msgs');
+  ['touchstart', 'contextmenu'].forEach(ev => msgs$.addEventListener(ev, e => { const b = e.target.closest && e.target.closest('.b'); if (b) pressed = b; }, { passive: true, capture: true }));
+  function place(wrap){
+    const menu = wrap.firstElementChild, b = pressed && document.body.contains(pressed) ? pressed : null; if (!menu) return;
+    menu.style.visibility = 'hidden'; if (b) b.classList.add('pressed');
+    requestAnimationFrame(() => {
+      const vw = innerWidth, vh = innerHeight, mr = menu.getBoundingClientRect();
+      let top, left;
+      if (b){
+        const r = b.getBoundingClientRect(), mine = b.classList.contains('me');
+        top = r.top - mr.height - 8; if (top < 70) top = Math.min(r.bottom + 8, vh - mr.height - 12);
+        left = mine ? r.right - mr.width : r.left;
+      } else { top = vh - mr.height - 90; left = (vw - mr.width) / 2; }
+      left = Math.max(10, Math.min(left, vw - mr.width - 10)); top = Math.max(10, top);
+      menu.style.top = top + 'px'; menu.style.left = left + 'px'; menu.style.visibility = '';
+    });
+    const ob = new MutationObserver(() => { if (!document.body.contains(wrap)){ if (b) b.classList.remove('pressed'); ob.disconnect(); } });
+    ob.observe(document.body, { childList: true });
+  }
+  new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.id === 'mact') place(n); }))).observe(document.body, { childList: true });
+
+  /* 4) call history: long-press a call to select; no delete button on rows */
+  const AC = window.AbsolCall;
+  if (AC){
+    const card = $('cardCalls'), bar = card.children[0], list = card.children[1], fab = card.children[2];
+    const KEY = () => 'absol-calls:' + me.id;
+    const save = a => { try { localStorage.setItem(KEY(), JSON.stringify(a.slice(0, 100))); } catch {} };
+    const load = () => { let a = []; try { a = JSON.parse(localStorage.getItem(KEY()) || '[]'); } catch {} let ch = false; a.forEach((e, i) => { if (!e.id){ e.id = e.t + '-' + i; ch = true; } }); if (ch) save(a); return a; };
+    const dur = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    let sel = false, picked = new Set(), lpAt = 0;
+    const exit = () => { sel = false; picked = new Set(); AC.render(); };
+    const del = ids => { save(load().filter(e => !ids.has(e.id))); exit(); };
+    AC.render = function(){
+      if (!me) return;
+      const a = load(); list.textContent = ''; bar.textContent = ''; bar.hidden = !sel; fab.hidden = sel;
+      if (!a.length){ sel = false; bar.hidden = true; fab.hidden = false; list.appendChild(el('div', { className: 'empty', textContent: 'No calls yet. Open a chat and tap the phone icon.' })); return; }
+      if (sel){
+        bar.append(chipBtn('{{x}} Cancel', exit),
+          chipBtn(picked.size === a.length ? 'None' : 'All', () => { picked = picked.size === a.length ? new Set() : new Set(a.map(e => e.id)); AC.render(); }),
+          chipBtn('{{trash}} Delete (' + picked.size + ')', () => { if (!picked.size) return toast('Select calls first'); if (confirm('Delete ' + picked.size + ' selected?')) del(new Set(picked)); }),
+          chipBtn('Clear all', () => { if (confirm('Delete your entire call history on this device?')) del(new Set(a.map(e => e.id))); }));
+      }
+      a.forEach(e => {
+        const label = { completed: dur(e.dur || 0), missed: 'Missed', declined: 'Declined', noanswer: 'No answer', busy: 'Busy', failed: 'Failed' }[e.status] || '';
+        const miss = e.status === 'missed';
+        const tx = el('div', { className: 'tx' }, el('b', { textContent: dname(e.peer) }),
+          el('span', { className: miss ? 'miss' : '', textContent: (e.dir === 'out' ? 'Outgoing' : 'Incoming') + ' · ' + label + ' · ' + fmtTime(new Date(e.t).toISOString()) }));
+        const row = el('div', { className: 'convo callrow' + (sel && picked.has(e.id) ? ' picked' : '') });
+        const tail = sel ? el('span', { className: 'ck', textContent: picked.has(e.id) ? '{{check-circle}}' : '' })
+          : el('button', { className: 'iconbtn', textContent: e.video ? '{{video}}' : '{{phone}}', onclick: ev => { ev.stopPropagation(); AC.start(e.peer, e.video); } });
+        row.append(el('div', { className: 'cico' + (miss ? ' miss' : ''), textContent: '{{' + (e.video ? 'video' : 'phone') + '}}' }), avatar((profiles[e.peer] || {}).username), tx, tail);
+        const toggle = () => { if (picked.has(e.id)) picked.delete(e.id); else picked.add(e.id); AC.render(); };
+        let tm = 0, sx = 0, sy = 0;
+        row.addEventListener('touchstart', ev => { const t = ev.touches[0]; sx = t.clientX; sy = t.clientY; clearTimeout(tm);
+          tm = setTimeout(() => { lpAt = Date.now(); if (navigator.vibrate) navigator.vibrate(15); if (!sel){ sel = true; picked = new Set([e.id]); AC.render(); } else toggle(); }, 450); }, { passive: true });
+        row.addEventListener('touchmove', ev => { const t = ev.touches[0]; if (Math.abs(t.clientX - sx) > 8 || Math.abs(t.clientY - sy) > 8) clearTimeout(tm); }, { passive: true });
+        ['touchend', 'touchcancel'].forEach(n => row.addEventListener(n, () => clearTimeout(tm), { passive: true }));
+        row.addEventListener('contextmenu', ev => { ev.preventDefault(); if (Date.now() - lpAt > 700){ lpAt = Date.now(); if (!sel){ sel = true; picked = new Set([e.id]); AC.render(); } } });
+        row.onclick = () => { if (Date.now() - lpAt < 700) return; if (sel) toggle(); else openChat(e.peer); };
+        list.appendChild(row);
+      });
+    };
+    if (me) AC.render();
+  }
+
+  applyTheme(localStorage.getItem('absol-theme') || 'lavender');
+})();
+</script>
+<!-- ===== UI PATCH 1 END ===== -->
 </body>
 </html>
