@@ -4583,5 +4583,172 @@ dialog h2{font-size:17px;font-weight:800}
 })();
 </script>
 <!-- ===== END VIEW ONCE ===== -->
+  <!-- ===== ABSOL SETTINGS PATCH 1: framework + Notifications extras + Chats + Data and help ===== -->
+<style>
+#msgs .b{font-size:calc(14.5px*var(--ts,1))!important}
+#msgs[data-bg="deep"]{background:color-mix(in srgb,var(--bg) 70%,#000)}
+#msgs[data-bg="dots"]{background-image:radial-gradient(color-mix(in srgb,var(--accent) 16%,transparent) 1.3px,transparent 1.4px);background-size:20px 20px}
+#msgs[data-bg="lines"]{background-image:repeating-linear-gradient(45deg,color-mix(in srgb,var(--accent) 7%,transparent) 0 1px,transparent 1px 14px)}
+#msgs[data-bg="photo"]{background-size:cover;background-position:center}
+.srow input[type=time]{width:auto;padding:8px 10px}
+.pcard p{margin:0 0 10px;color:var(--muted);font-size:14px}
+.pcard p b{color:var(--text)}
+</style>
+<script>
+(function(){
+  /* ---------- tiny settings store (per user, this device) ---------- */
+  const SX = window.SX = { ext: {}, defs: { vib: true, qh: false, qf: '22:00', qt: '07:00', ts: 1, bg: 'default', enter: true, pq: 'standard' } };
+  const skey = () => 'absol-set:' + (me ? me.id : '_');
+  const read = () => { try { return JSON.parse(localStorage.getItem(skey()) || '{}'); } catch { return {}; } };
+  SX.get = k => { const o = read(); return k in o ? o[k] : SX.defs[k]; };
+  SX.set = (k, v) => {
+    try { const o = read(); o[k] = v; localStorage.setItem(skey(), JSON.stringify(o)); } catch { toast('Could not save'); }
+    SX.apply();
+  };
+  /* later patches add their own cards to existing screens with SX.hook('privacy', fn) */
+  SX.hook = (view, fn) => (SX.ext[view] = SX.ext[view] || []).push(fn);
+  ['privacy', 'notif'].forEach(v => { const o = VIEWS[v]; VIEWS[v] = b => { o(b); (SX.ext[v] || []).forEach(f => f(b)); }; });
+
+  /* ---------- settings menu: new sections ---------- */
+  Object.assign(SETTITLES, { account: 'Account and security', chats: 'Chats', data: 'Data and help' });
+  VIEWS.main = b => b.append(scard(...[
+    ['{{user}} Profile', 'profile'], ['{{key}} Account and security', 'account'], ['{{lock}} Locked chats', 'locks'],
+    ['{{shield}} Privacy', 'privacy'], ['{{block}} Blocked contacts', 'blocked'], ['{{chat}} Chats', 'chats'],
+    ['{{bell}} Notifications', 'notif'], ['{{palette}} Theme', 'theme'], ['{{info}} Data and help', 'data']
+  ].map(([t, v]) => srow(t, '{{chev-right}}', () => gotoView(v)))));
+  VIEWS.account = VIEWS.account || (b => b.append(empty('Arrives in a later patch')));
+
+  /* ---------- Notifications: vibration + quiet hours ---------- */
+  const mins = s => { const [h, m] = String(s).split(':').map(Number); return h * 60 + (m || 0); };
+  SX.quiet = () => {
+    if (!SX.get('qh')) return false;
+    const d = new Date(), n = d.getHours() * 60 + d.getMinutes(), a = mins(SX.get('qf')), z = mins(SX.get('qt'));
+    return a <= z ? (n >= a && n < z) : (n >= a || n < z);
+  };
+  const ov = navigator.vibrate ? navigator.vibrate.bind(navigator) : null;
+  if (ov) navigator.vibrate = p => SX.get('vib') ? ov(p) : false;
+  const _ps = playSeq;
+  playSeq = function(seq){
+    if (Object.values(TONES).includes(seq)){           /* message sounds only, calls still ring */
+      if (SX.quiet()) return;
+      if (SX.get('vib') && ov) ov(60);
+    }
+    return _ps(seq);
+  };
+  SX.hook('notif', b => {
+    const tm = k => el('input', { type: 'time', value: SX.get(k), onchange: e => SX.set(k, e.target.value || SX.defs[k]) });
+    b.append(el('div', { className: 'sec', textContent: 'More' }),
+      scard(
+        srow('Vibration', pill(SX.get('vib'), v => SX.set('vib', v))),
+        srow('Quiet hours', pill(SX.get('qh'), v => { SX.set('qh', v); rerender(); })),
+        ...(SX.get('qh') ? [srow('From', tm('qf')), srow('To', tm('qt'))] : [])),
+      el('p', { className: 'hint', textContent: 'In quiet hours, message sounds and vibration stay off. Calls still ring.' }));
+  });
+
+  /* ---------- Chats: text size, background, enter key, photo quality, export ---------- */
+  SX.apply = () => {
+    const m = $('msgs'); if (!m) return;
+    m.style.setProperty('--ts', SX.get('ts'));
+    const bg = SX.get('bg'); m.dataset.bg = bg;
+    m.style.backgroundImage = bg === 'photo' && SX.get('bgimg') ? 'url("' + SX.get('bgimg') + '")' : '';
+  };
+  let lastId = null;
+  setInterval(() => { if (me && lastId !== me.id){ lastId = me.id; SX.apply(); } else if (!me) lastId = null; }, 1000);
+
+  $('composer').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !SX.get('enter')){ e.stopPropagation(); e.preventDefault(); }
+  }, true);
+
+  const PQ = { saver: [1024, .6], standard: [1600, .82], high: [1600, .93] };
+  const pq = () => PQ[SX.get('pq')] || PQ.standard;
+  const _li = loadImage;
+  loadImage = async function(f){
+    const img = await _li(f), w = img.width || img.naturalWidth, h = img.height || img.naturalHeight, s = Math.min(1, pq()[0] / Math.max(w, h));
+    if (s >= 1) return img;
+    const c = document.createElement('canvas'); c.width = Math.round(w * s); c.height = Math.round(h * s);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); return c;
+  };
+  const _tb = HTMLCanvasElement.prototype.toBlob;
+  HTMLCanvasElement.prototype.toBlob = function(cb, type, q){
+    if (type === 'image/jpeg' && q === .82) q = pq()[1];
+    return _tb.call(this, cb, type, q);
+  };
+
+  async function exportChat(it){
+    if (it.kind === 'u' && st(it.id).locked && !(await askPassword())) return;
+    const u = it.kind === 'u', name = u ? dname(it.id) : groups[it.id].name;
+    const arr = (u ? msgs.filter(m => visible(m) && otherId(m) === it.id) : gmsgs.filter(m => m.group_id === it.id && gvisible(m)))
+      .filter(m => !m.pending).sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    const lines = [];
+    arr.forEach(m => {
+      let t = u ? decrypt(m) : decryptG(m); if (t == null) return;
+      if (typeof t === 'string' && t.charCodeAt(0) === 0x2064) t = '[' + t.slice(1) + ']';
+      lines.push('[' + new Date(m.created_at).toLocaleString() + '] ' + (m.sender_id === me.id ? 'You' : dname(m.sender_id)) + ': ' + t);
+    });
+    if (!lines.length) return toast('Nothing to export');
+    const f = new File(['Absol chat with ' + name + '\n\n' + lines.join('\n')], 'absol-' + name.replace(/[^\w-]+/g, '_') + '.txt', { type: 'text/plain' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast('Exported ' + lines.length + ' messages');
+  }
+
+  VIEWS.chats = b => {
+    const sel = (k, opts) => {
+      const s = el('select', { onchange: e => SX.set(k, k === 'ts' ? +e.target.value : e.target.value) },
+        ...opts.map(([v, t]) => el('option', { value: v, textContent: t })));
+      s.value = SX.get(k); return s;
+    };
+    const file = el('input', { type: 'file', accept: 'image/*', hidden: true, onchange: async e => {
+      const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+      try {
+        const img = await _li(f), w = img.width || img.naturalWidth, h = img.height || img.naturalHeight, s = Math.min(1, 900 / Math.max(w, h));
+        const c = document.createElement('canvas'); c.width = Math.round(w * s); c.height = Math.round(h * s);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        SX.set('bgimg', c.toDataURL('image/jpeg', .7)); SX.set('bg', 'photo'); rerender();
+      } catch { toast('Could not use that image'); }
+    } });
+    b.append(scard(
+      srow('Text size', sel('ts', [[.9, 'Small'], [1, 'Medium'], [1.15, 'Large'], [1.3, 'Extra large']])),
+      srow('Chat background', sel('bg', [['default', 'Default'], ['deep', 'Deep'], ['dots', 'Dots'], ['lines', 'Lines'], ['photo', 'My photo']])),
+      srow('Use my own photo', chipBtn('Choose', () => file.click())),
+      srow('Enter key sends', pill(SX.get('enter'), v => SX.set('enter', v))),
+      srow('Photo quality', sel('pq', [['saver', 'Data saver'], ['standard', 'Standard'], ['high', 'High']]))), file,
+      el('p', { className: 'hint', textContent: 'With Enter off, use the send button. Photo quality applies to photos you send from now on.' }),
+      el('div', { className: 'sec', textContent: 'Export a chat' }));
+    const rec = recentChats();
+    b.append(rec.length ? scard(...rec.map(it => srow(it.kind === 'u' ? dname(it.id) : groups[it.id].name, chipBtn('Export', () => exportChat(it)))))
+      : empty('No chats yet'),
+      el('p', { className: 'hint', textContent: 'Exports the messages loaded on this device as a text file. Photos and files are listed by label only.' }));
+  };
+
+  /* ---------- Data and help ---------- */
+  VIEWS.data = b => {
+    const fmtB = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+    const r = t => el('span', { className: 'r', textContent: String(t) });
+    let bytes = 0;
+    try { for (let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); bytes += (k.length + (localStorage.getItem(k) || '').length) * 2; } } catch {}
+    const est = r('…');
+    if (navigator.storage && navigator.storage.estimate) navigator.storage.estimate().then(e => { est.textContent = fmtB(e.usage || 0); }).catch(() => { est.textContent = 'n/a' });
+    else est.textContent = 'n/a';
+    let calls = 0; try { calls = JSON.parse(localStorage.getItem('absol-calls:' + me.id) || '[]').length; } catch {}
+    b.append(el('div', { className: 'sec', textContent: 'Storage and data' }),
+      scard(srow('Messages loaded', r(msgs.length + gmsgs.length)), srow('Chats and groups', r(recentChats().length)),
+        srow('Saved calls', r(calls)), srow('Saved on this device', r(fmtB(bytes))), srow('Browser storage used', est)),
+      scard(
+        srow('Clear call history', chipBtn('Clear', () => { if (!confirm('Delete your call history on this device?')) return; try { localStorage.removeItem('absol-calls:' + me.id); } catch {} if (window.AbsolCall) AbsolCall.render(); rerender(); toast('Call history cleared'); })),
+        srow('Clear recent searches', chipBtn('Clear', () => { try { localStorage.removeItem('absol-rs:' + me.id); } catch {} rerender(); toast('Searches cleared'); }))),
+      el('p', { className: 'hint', textContent: 'Your encryption key lives on this device. Clearing browser data removes it, so back it up first.' }),
+      el('div', { className: 'sec', textContent: 'About and help' }),
+      el('div', { className: 'scard pad pcard' },
+        el('p', {}, el('b', { textContent: 'Absol' }), ' · end-to-end encrypted messaging. Messages are locked on your device; the server only stores scrambled text.'),
+        el('p', {}, el('b', { textContent: 'Safety number: ' }), 'open a chat, tap ⋮, then Verify encryption. Compare it with your contact in person.'),
+        el('p', {}, el('b', { textContent: 'New phone? ' }), 'back up your key first (Profile → Back up key), then restore it with your passphrase.'),
+        el('p', {}, el('b', { textContent: 'Problem with a person? ' }), 'open the chat, tap ⋮, then Report user.'),
+        el('p', { style: 'margin:0' }, el('b', { textContent: 'Version: ' }), 'Absol settings patch 1')));
+  };
+})();
+</script>
+<!-- ===== END ABSOL SETTINGS PATCH 1 ===== -->
+
 </body>
 </html>
