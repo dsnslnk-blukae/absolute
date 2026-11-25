@@ -4099,6 +4099,231 @@ dialog h2{font-size:17px;font-weight:800}
   if (!document.getElementById('chat').hidden) renderMsgs();
 })();
 </script>
+<!-- ===== ABSOL VOICE MESSAGES ===== -->
+<style>
+/* mic button (replaces the send button while the message box is empty) */
+#micBtn{width:42px;height:42px;padding:0;flex:none;border-radius:var(--rs,12px);background:var(--accent);color:var(--accent-text);touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;transition:transform .15s,background .15s}
+#micBtn .i{width:19px;height:19px;margin:0}
+#micBtn.on{background:var(--danger);color:#fff;transform:scale(1.18)}
+
+/* recording bar */
+#composer.recording>#msgInput,#composer.recording>#plusBtn{display:none}
+#recBar{display:none;flex:1;min-width:0;align-items:center;gap:10px;height:42px;padding:0 14px;border-radius:var(--rs,12px);background:var(--surface2);color:var(--text);font-size:14px}
+#composer.recording>#recBar{display:flex}
+#recBar .rdot{width:9px;height:9px;flex:none;border-radius:50%;background:var(--danger);animation:recp 1s ease-in-out infinite}
+@keyframes recp{50%{opacity:.25}}
+#recT{font-variant-numeric:tabular-nums;font-weight:700}
+#recH{margin-left:auto;color:var(--muted);font-size:13px;white-space:nowrap}
+#recBar.cx #recH{color:var(--danger)}
+
+/* voice message in a bubble */
+.vm{display:flex;align-items:center;gap:9px;min-width:200px;cursor:default}
+.vm .pp{width:34px;height:34px;padding:0;border-radius:50%;flex:none;display:grid;place-items:center;background:var(--accent);color:var(--accent-text)}
+.vm .pp .i{width:16px;height:16px;margin:0}
+.vm .vmid{flex:1;min-width:0}
+.vm .bars{display:flex;align-items:center;gap:2px;height:26px}
+.vm .bars i{display:block;flex:1;min-width:2px;max-width:4px;border-radius:2px;background:currentColor;opacity:.3}
+.vm .bars i.on{opacity:1}
+.vm .vt{display:block;font-size:11px;opacity:.7;margin-top:1px}
+</style>
+<script>
+(function(){
+  const U = id => document.getElementById(id), P2 = window.P2;
+  const BUCKET = 'chat-media', MARK = '\u2064', CAP = 180;
+
+  if (!window.MediaRecorder || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    console.warn('[voice] this browser cannot record audio'); return;
+  }
+
+  /* pause icon */
+  ICONS.pause = '<path d="M8.5 6v12M15.5 6v12" stroke-width="3.2"/>';
+  const sprite = document.querySelector('body > svg[aria-hidden]');
+  if (sprite) sprite.insertAdjacentHTML('beforeend', '<symbol id="i-pause" viewBox="0 0 24 24">' + ICONS.pause + '</symbol>');
+
+  const fmt = s => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+  const tgt = () => curGroup ? { kind: 'group', id: curGroup } : (current ? { kind: 'dm', id: current } : null);
+
+  /* ---------- reading and playing voice messages ---------- */
+  function attOf(m){
+    if (m._att !== undefined) return m._att;
+    decrypt(m);
+    if (typeof m._t !== 'string' || m._t.charCodeAt(0) !== 0x2064) return null;
+    let a = null;
+    try {
+      let pt;
+      if (m.group_id) pt = nacl.secretbox.open(unb64(m.ciphertext), unb64(m.nonce), gkeys[m.group_id + ':' + m.epoch]);
+      else pt = nacl.box.open(unb64(m.ciphertext), unb64(m.nonce), unb64(profiles[otherId(m)].public_key), me.sk);
+      const s = pt && nacl.util.encodeUTF8(pt);
+      if (s && s.startsWith(P2.PFX)) a = JSON.parse(s.slice(P2.PFX.length)).a || null;
+    } catch {}
+    return (m._att = a);
+  }
+  const urls = {};
+  const getUrl = a => urls[a.p] || (urls[a.p] = (async () => {
+    const { data, error } = await sb.storage.from(BUCKET).download(a.p);
+    if (error) throw error;
+    const buf = new Uint8Array(await data.arrayBuffer());
+    const pt = nacl.secretbox.open(buf.subarray(24), buf.subarray(0, 24), unb64(a.k));
+    if (!pt) throw new Error('Could not decrypt the voice message');
+    return URL.createObjectURL(new Blob([pt], { type: a.m || 'audio/webm' }));
+  })().catch(e => { delete urls[a.p]; throw e; }));
+
+  let playing = null;
+  function voiceNode(a){
+    const total = a.d || 0, N = 26, items = [];
+    const pp = el('button', { className: 'pp', textContent: '{{play}}' });
+    pp.setAttribute('aria-label', 'Play voice message');
+    const bars = el('div', { className: 'bars' });
+    let h = 0; for (const c of String(a.p)) h = (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0;
+    for (let i = 0; i < N; i++){
+      h = (Math.imul(h, 1103515245) + 12345) >>> 0;
+      const b = el('i'); b.style.height = (22 + ((h >>> 16) % 78)) + '%'; items.push(b); bars.append(b);
+    }
+    const tm = el('span', { className: 'vt', textContent: fmt(total) });
+    const root = el('div', { className: 'att vm' }, pp, el('div', { className: 'vmid' }, bars, tm));
+    let aud = null, busy = false;
+    const paint = p => { const n = Math.round(p * N); items.forEach((b, i) => b.classList.toggle('on', i < n)); };
+    const reset = () => { pp.textContent = '{{play}}'; paint(0); tm.textContent = fmt(total); };
+    root._pause = () => { if (aud) aud.pause(); };
+    pp.onclick = async e => {
+      e.stopPropagation();
+      if (busy) return;
+      if (aud && !aud.paused){ aud.pause(); return; }
+      try {
+        if (!aud){
+          busy = true; pp.textContent = '…';
+          const u = await getUrl(a);
+          aud = new Audio(u);
+          aud.onplay = () => { pp.textContent = '{{pause}}'; };
+          aud.onpause = () => { pp.textContent = '{{play}}'; };
+          aud.ontimeupdate = () => { paint(Math.min(1, aud.currentTime / (total || aud.duration || 1))); tm.textContent = fmt(aud.currentTime); };
+          aud.onended = () => { aud.currentTime = 0; reset(); if (playing === root) playing = null; };
+          busy = false;
+        }
+        if (playing && playing !== root) playing._pause();
+        playing = root;
+        await aud.play();
+      } catch (err){ busy = false; pp.textContent = '{{play}}'; toast('Could not play: ' + friendly(err)); }
+    };
+    return root;
+  }
+  /* swap the plain audio row for the voice player */
+  P2.decor.push((b, m) => {
+    if (b.querySelector('.vm')) return;
+    const a = attOf(m); if (!a || !a.v || a.ty !== 'audio') return;
+    const old = b.querySelector('.att'); if (!old) return;
+    old.replaceWith(voiceNode(a));
+  });
+
+  /* ---------- sending ---------- */
+  async function deliver(t, att, text){
+    const packed = P2.PFX + JSON.stringify({ t: MARK + text, a: att }), data = nacl.util.decodeUTF8(packed);
+    let row, arr;
+    if (t.kind === 'group'){
+      let g = groups[t.id], K = g && gkeys[g.id + ':' + g.epoch];
+      if (!K){ await loadGroups(false); g = groups[t.id]; K = g && gkeys[g.id + ':' + g.epoch]; }
+      if (!K) throw new Error('Group key not ready');
+      const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+      const r = await sb.from('group_messages').insert({ group_id: t.id, sender_id: me.id, epoch: g.epoch, ciphertext: b64(nacl.secretbox(data, nonce, K)), nonce: b64(nonce) }).select().single();
+      if (r.error) throw r.error; row = r.data; arr = gmsgs;
+    } else {
+      await loadProfiles([t.id]);
+      const nonce = nacl.randomBytes(nacl.box.nonceLength);
+      const r = await sb.from('messages').insert({ sender_id: me.id, recipient_id: t.id, ciphertext: b64(nacl.box(data, nonce, unb64(profiles[t.id].public_key), me.sk)), nonce: b64(nonce) }).select().single();
+      if (r.error) throw r.error; row = r.data; arr = msgs;
+    }
+    let ex = arr.find(x => x.id === row.id);
+    if (!ex){ row._t = packed; arr.push(row); ex = row; }
+    ex._att = att;
+    renderList(); if (!U('chat').hidden) renderMsgs();
+  }
+  async function sendVoice(blob, secs, mime, t){
+    const buf = new Uint8Array(await blob.arrayBuffer()), key = nacl.randomBytes(32), nonce = nacl.randomBytes(24);
+    const box = nacl.secretbox(buf, nonce, key);
+    const path = me.id + '/' + crypto.randomUUID();
+    const { error } = await sb.storage.from(BUCKET).upload(path, new Blob([nonce, box]), { contentType: 'application/octet-stream' });
+    if (error) throw error;
+    await deliver(t, { ty: 'audio', p: path, k: b64(key), m: mime, n: 'Voice message', s: buf.length, v: 1, d: secs }, 'Voice message');
+  }
+
+  /* ---------- recording ---------- */
+  const mic = el('button', { id: 'micBtn', textContent: '{{mic}}' });
+  mic.setAttribute('aria-label', 'Hold to record a voice message');
+  const recBar = el('div', { id: 'recBar' }, el('i', { className: 'rdot' }), el('span', { id: 'recT', textContent: '0:00' }), el('span', { id: 'recH', textContent: 'Slide left to cancel' }));
+  U('sendBtn').before(mic);
+  U('msgInput').after(recBar);
+
+  const mimes = ['audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'];
+  const pickMime = () => mimes.find(t => { try { return MediaRecorder.isTypeSupported(t); } catch { return false; } }) || '';
+  let press = null, rec = null, sending = false;
+
+  function setCancel(c){
+    if (!rec || rec.cancel === c) return;
+    rec.cancel = c; recBar.classList.toggle('cx', c);
+    U('recH').textContent = c ? 'Release to cancel' : 'Slide left to cancel';
+  }
+  function begin(stream, p, t){
+    const mime = pickMime(); let mr;
+    try { mr = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream); }
+    catch { stream.getTracks().forEach(x => x.stop()); press = null; return toast('Could not start recording'); }
+    const r = rec = { mr, stream, chunks: [], t0: Date.now(), x0: p.x, cancel: false, target: t, mime: (mr.mimeType || mime || 'audio/webm').split(';')[0] };
+    press = null;
+    mr.ondataavailable = ev => { if (ev.data && ev.data.size) r.chunks.push(ev.data); };
+    mr.onstop = () => done(r);
+    mr.start();
+    U('composer').classList.add('recording'); mic.classList.add('on');
+    recBar.classList.remove('cx'); U('recH').textContent = 'Slide left to cancel'; U('recT').textContent = '0:00';
+    if (navigator.vibrate) navigator.vibrate(15);
+    r.iv = setInterval(() => {
+      const s = (Date.now() - r.t0) / 1000; U('recT').textContent = fmt(s);
+      if (s >= CAP) stopRec(r.cancel);
+    }, 200);
+  }
+  function stopRec(cancel){
+    const r = rec; if (!r || r.stopping) return;
+    r.stopping = true; r.cancel = !!cancel; clearInterval(r.iv);
+    try { if (r.mr.state !== 'inactive') r.mr.stop(); else done(r); } catch { done(r); }
+  }
+  async function done(r){
+    r.stream.getTracks().forEach(x => x.stop()); clearInterval(r.iv);
+    U('composer').classList.remove('recording'); mic.classList.remove('on');
+    if (rec === r) rec = null;
+    const ms = Date.now() - r.t0;
+    if (r.cancel) return;
+    if (ms < 700 || !r.chunks.length) return toast('Hold the mic to record, then release to send');
+    const blob = new Blob(r.chunks, { type: r.mime });
+    sending = true; mic.disabled = true; toast('Sending voice message…');
+    try { await sendVoice(blob, Math.max(1, Math.round(ms / 1000)), r.mime, r.target); }
+    catch (e) { toast('Could not send: ' + friendly(e)); }
+    finally { sending = false; mic.disabled = false; }
+  }
+
+  mic.addEventListener('pointerdown', async e => {
+    e.preventDefault();
+    if (press || rec || sending) return;
+    const t = tgt(); if (!t) return;
+    if (t.kind === 'dm' && st(t.id).blocked) return toast('Unblock this user first');
+    const p = press = { x: e.clientX, released: false };
+    try { mic.setPointerCapture(e.pointerId); } catch {}
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+    catch { if (press === p) press = null; return toast('Microphone is blocked'); }
+    if (press !== p || p.released){ stream.getTracks().forEach(x => x.stop()); if (press === p) press = null; return toast('Hold the mic to record'); }
+    begin(stream, p, t);
+  });
+  mic.addEventListener('pointermove', e => { if (rec && !rec.stopping) setCancel(e.clientX - rec.x0 < -90); });
+  mic.addEventListener('pointerup', () => { if (rec) stopRec(rec.cancel); else if (press) press.released = true; });
+  mic.addEventListener('pointercancel', () => { if (rec) stopRec(true); else if (press) press.released = true; });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && rec) stopRec(true); });
+
+  /* ---------- mic shows when the message box is empty, send shows when you type ---------- */
+  const inp = U('msgInput'), snd = U('sendBtn');
+  function sync(){ const empty = !inp.value; mic.hidden = !empty; snd.hidden = empty; }
+  inp.addEventListener('input', sync);
+  setInterval(sync, 300);
+  sync();
+})();
+</script>
 
 </body>
 </html>
