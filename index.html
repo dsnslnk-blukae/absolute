@@ -3976,29 +3976,48 @@ dialog h2{font-size:17px;font-weight:800}
   if (!document.getElementById('chat').hidden) renderMsgs();
 })();
 </script>
-<!-- ===== ABSOL DOT FIX: bigger status dot outside the bubble, theme-matched colours =====
-     Paste at the very bottom of your HTML, after the BUBBLES block and before </body>.
-     Nothing is deleted. To undo, delete this block. -->
+<!-- ===== ABSOL DOT + REPLY FIX =====
+     1) If you pasted the "DOT FIX" block, delete it (this one replaces it).
+     2) Paste this at the very bottom of your HTML, after the BUBBLES block and before </body>.
+     To undo, delete this block. -->
 <style>
-/* Colours: sent = dim, read = lit. Both come from your theme.
-   To try other colours, change these two lines, for example --dot-read:#7be3c1 (mint) or var(--accent2) (pale tint). */
-:root{--dot-sent:var(--muted);--dot-read:var(--accent)}
+/* colours: white = sent, emerald green = read (change these two if you like) */
+:root{--dot-sent:#ffffff;--dot-read:#22c55e}
 
+/* reply chips were being squashed because chat rows could shrink: stop that */
+#msgs>*,#msgs .gcol>*{flex-shrink:0}
+#msgs .rq.out{min-height:34px}
+
+/* status dot: outside the bubble, bottom right */
+#msgs .b.hd{margin-right:20px}
+#msgs .out.me.hd{margin-right:24px}
 #msgs .b.me{position:relative}
-#msgs .b.me > .tk.dot{position:absolute;left:-17px;bottom:7px;width:10px;height:10px;margin:0;border:0;border-radius:50%;background:var(--dot-sent);opacity:.85}
-#msgs .b.me > .tk.dot.read{background:var(--dot-read);opacity:1}
-#msgs .b.me > .tk.dot.pend{background:transparent;border:1.5px solid var(--dot-sent);opacity:.6}
+#msgs .b.me > .tk.dot{position:absolute;left:auto;right:-17px;bottom:6px;width:11px;height:11px;margin:0;border:0;border-radius:50%;background:var(--dot-sent);opacity:1}
+#msgs .b.me > .tk.dot.read{background:var(--dot-read)}
+#msgs .b.me > .tk.dot.pend{background:transparent;border:1.5px solid rgba(255,255,255,.55)}
 </style>
 <script>
 (function(){
-  const rm1 = renderMsgs;
+  const rm2 = renderMsgs;
   renderMsgs = function(){
-    rm1();
+    rm2();
     try {
-      /* move each dot out of the time text and onto the bubble, so it sits beside it */
-      document.querySelectorAll('#msgs .b.me').forEach(b => {
-        const t = b.querySelector('small .tk.dot'); if (t) b.append(t);
+      const bx = document.getElementById('msgs');
+      const atEnd = bx.scrollHeight - bx.scrollTop - bx.clientHeight < 6;
+      bx.querySelectorAll('.b.me').forEach(b => {
+        const t = b.querySelector(':scope > .tk') || b.querySelector('small .tk');
+        if (!t) return;
+        if (!t.classList.contains('dot')){
+          const read = t.classList.contains('rd'), s = t.textContent.trim();
+          t.className = 'tk dot ' + (s === '…' ? 'pend' : (s === '✓✓' && read) ? 'read' : 'sent');
+          t.textContent = '';
+        }
+        b.append(t); b.classList.add('hd');
+        /* the forwarded label or reply quote above the bubble lines up with it */
+        let p = b.previousElementSibling;
+        while (p && p.classList.contains('out')){ p.classList.add('hd'); p = p.previousElementSibling; }
       });
+      if (atEnd) bx.scrollTop = bx.scrollHeight;
     } catch (e) { console.warn('[dot]', e); }
   };
   if (!document.getElementById('chat').hidden) renderMsgs();
