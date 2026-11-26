@@ -5435,76 +5435,125 @@ body.pblur #app,body.pblur dialog{filter:blur(26px)}
   const googleBtn = $('googleLoginBtn');
 
   // New Google users choose their own Absol username.
+  
+  // Gmail-first registration for new Google users.
   async function createGoogleProfile(user) {
     const uid = user.id;
 
     const { data: existing, error: lookupError } = await sb
       .from('profiles')
-      .select('*')
+      .select('id')
       .eq('id', uid)
       .maybeSingle();
 
     if (lookupError) throw lookupError;
-
     if (existing) return;
 
-    let username = '';
+    const isGoogle =
+      user.app_metadata?.provider === 'google' ||
+      (user.identities || []).some(i => i.provider === 'google');
+
+    if (!isGoogle || !user.email || !user.email_confirmed_at) {
+      throw new Error('Google email verification could not be confirmed.');
+    }
+
+    let username;
 
     while (true) {
-      username = prompt(
-        'Choose your Absol username (3–20 letters, numbers or underscores):'
+      const value = prompt(
+        'Create your Absol username (3–20 letters, numbers or underscores):'
       );
 
-      if (username === null) {
+      if (value === null) {
         await sb.auth.signOut();
         show('auth');
-        throw new Error('Username setup cancelled.');
+        throw new Error('Registration cancelled.');
       }
 
-      username = username.trim().toLowerCase();
+      username = value.trim().toLowerCase();
 
       if (!/^[a-z0-9_]{3,20}$/.test(username)) {
         alert('Use 3–20 letters, numbers or underscores.');
         continue;
       }
 
-      const { data: taken, error: checkError } = await sb
+      const { data: taken, error } = await sb
         .from('profiles')
         .select('id')
         .eq('username', username)
         .maybeSingle();
 
-      if (checkError) throw checkError;
+      if (error) throw error;
 
       if (taken) {
-        alert('That username is already taken. Choose another.');
+        alert('Username already taken. Choose another.');
         continue;
       }
 
       break;
     }
 
-    // Generate the encryption keys for this new account.
+    let password;
+
+    while (true) {
+      const value = prompt(
+        'Create your Absol password (minimum 8 characters):'
+      );
+
+      if (value === null) {
+        await sb.auth.signOut();
+        show('auth');
+        throw new Error('Registration cancelled.');
+      }
+
+      if (value.length < 8) {
+        alert('Password must contain at least 8 characters.');
+        continue;
+      }
+
+      const repeat = prompt('Re-enter your Absol password:');
+
+      if (repeat === null) {
+        await sb.auth.signOut();
+        show('auth');
+        throw new Error('Registration cancelled.');
+      }
+
+      if (value !== repeat) {
+        alert('Passwords do not match.');
+        continue;
+      }
+
+      password = value;
+      break;
+    }
+
+    // Add password authentication to the same Google account.
+    const { error: passwordError } =
+      await sb.auth.updateUser({ password });
+
+    if (passwordError) throw passwordError;
+
+    // Create the Absol encryption keys.
     const kp = nacl.box.keyPair();
 
     const { error: insertError } = await sb
       .from('profiles')
       .insert({
         id: uid,
-        username: username,
+        username,
         public_key: b64(kp.publicKey)
       });
 
     if (insertError) throw insertError;
 
-    // Store the private key locally, as the existing app expects.
     localStorage.setItem('sk:' + uid, b64(kp.secretKey));
   }
 
-  // Wrap the existing startup routine without replacing its
-  // messaging, backup, profile, or encryption functionality.
+  // Keep the existing startup process intact.
   start = async function () {
-    const { data: { session }, error } = await sb.auth.getSession();
+    const { data: { session }, error } =
+      await sb.auth.getSession();
 
     if (error) throw error;
 
@@ -5513,11 +5562,20 @@ body.pblur #app,body.pblur dialog{filter:blur(26px)}
       return;
     }
 
-    await createGoogleProfile(session.user);
+    const user = session.user;
 
-    // Continue through the existing Absol startup process.
+    const isGoogle =
+      user.app_metadata?.provider === 'google' ||
+      (user.identities || []).some(i => i.provider === 'google');
+
+    if (isGoogle) {
+      await createGoogleProfile(user);
+    }
+
     return originalStart();
-  };  
+  };
+
+  
 googleBtn.addEventListener('click', async function () {
   googleBtn.disabled = true;
   googleBtn.textContent = 'Connecting to Google…';
