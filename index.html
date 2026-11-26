@@ -5473,31 +5473,40 @@ body.pblur #app,body.pblur dialog{filter:blur(26px)}
 
     // Continue through the existing Absol startup process.
     return originalStart();
-  };
+  };  
+googleBtn.addEventListener('click', async function () {
+  googleBtn.disabled = true;
+  googleBtn.textContent = 'Connecting to Google…';
+  $('err').textContent = '';
 
-  googleBtn.addEventListener('click', async function () {
-    googleBtn.disabled = true;
-    googleBtn.textContent = 'Connecting to Google…';
+  try {
+    const { data, error } = await sb.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin + window.location.pathname,
+        skipBrowserRedirect: true
+      }
+    });
 
-    try {
-      const { error } = await sb.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.href
-        }
-      });
+    if (error) throw error;
 
-      if (error) throw error;
-
-    } catch (error) {
-      console.error('[Absol Google Auth]', error);
-      $('err').textContent =
-        error.message || 'Google sign-in failed. Please try again.';
-
-      googleBtn.disabled = false;
-      googleBtn.textContent = 'Continue with Google';
+    if (!data || !data.url) {
+      throw new Error('Google sign-in URL was not returned.');
     }
-  });
+
+    // Explicitly navigate to Google's authentication page.
+    window.location.assign(data.url);
+
+  } catch (error) {
+    console.error('[Absol Google Auth]', error);
+
+    $('err').textContent =
+      error.message || 'Google sign-in failed. Please try again.';
+
+    googleBtn.disabled = false;
+    googleBtn.textContent = 'Continue with Google';
+  }
+});
 
   // Start only after this patch has installed its authentication logic.
   start().catch(error => {
