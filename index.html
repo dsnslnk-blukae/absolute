@@ -255,14 +255,36 @@ mark{background:color-mix(in srgb,var(--accent) 38%,transparent);color:inherit;b
 <div id="app">
   <section id="auth" hidden>
     <h1>Absol</h1>
-    <p>End-to-end encrypted messaging.</p>
-    <input id="u" placeholder="Username" autocapitalize="off" autocomplete="username">
-    <input id="p" type="password" placeholder="Password (8+ characters)" autocomplete="current-password">
-    <div id="err"></div>
-    <div class="row">
-      <button id="loginBtn">Log in</button>
-      <button id="signupBtn" class="ghost" style="border:1px solid var(--accent)">Sign up</button>
-    </div>
+<p>End-to-end encrypted messaging.</p>
+
+<input id="u" placeholder="Username or Gmail"
+       autocapitalize="off" autocomplete="username">
+
+<input id="p" type="password" placeholder="Password"
+       autocomplete="current-password">
+
+<div style="text-align:right">
+  <button id="forgotPasswordBtn" class="ghost" type="button">
+    Forgot password?
+  </button>
+</div>
+
+<div id="err"></div>
+
+<button id="loginBtn" style="width:100%">Log in</button>
+
+<div class="auth-divider">
+  <span></span> OR <span></span>
+</div>
+
+<button id="googleLoginBtn" type="button">
+  Continue with Google
+</button>
+
+<div class="auth-signup">
+  Don't have an account?
+  <button id="signupBtn" class="ghost" type="button">Sign up</button>
+</div>
   </section>
 
   <section id="list" hidden>
