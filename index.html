@@ -1827,7 +1827,7 @@ applyTheme(localStorage.getItem('absol-theme') || 'lavender');
 </script>
   <!-- ABSOL ALL-IN-ONE PATCH (replaces every earlier patch)
      STEP 1: At the very bottom of your script, DELETE this one last line (the original starter):
-             start().catch(e => { console.error(e); show('auth'); $('err').textContent = friendly(e); });
+             window.__absolGoogleStartupPending = true;
      STEP 2: Paste this whole block at the very bottom, after the last </script> and before </body>.
      Contains: slimmer Chats/Calls toggle, collapsible members box, smoother swipe, faster startup,
      newest-500 loading with "Loading messages…" for older ones, and old chats kept in the list.
