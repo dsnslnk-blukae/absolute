@@ -5340,5 +5340,176 @@ body.pblur #app,body.pblur dialog{filter:blur(26px)}
 </script>
 <!-- ===== END ABSOL SETTINGS PATCH 4 ===== -->
 
+<!-- ===== ABSOL GOOGLE AUTH PATCH ===== -->
+<style>
+  #googleLoginBtn {
+    width: 100%;
+    margin-top: 14px;
+    padding: 13px;
+    border: 1px solid var(--accent);
+    border-radius: 14px;
+    background: var(--surface);
+    color: var(--text);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #googleLoginBtn:disabled {
+    opacity: .55;
+    cursor: wait;
+  }
+  #googleAuthNote {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+  }
+</style>
+
+<script>
+(function () {
+  'use strict';
+
+  const originalStart = start;
+
+  // Replace the old username/password login interface.
+  const auth = $('auth');
+  $('u').hidden = true;
+  $('p').hidden = true;
+  $('loginBtn').hidden = true;
+  $('signupBtn').hidden = true;
+
+  const googleBtn = document.createElement('button');
+  googleBtn.id = 'googleLoginBtn';
+  googleBtn.type = 'button';
+  googleBtn.textContent = 'Continue with Google';
+
+  const note = document.createElement('div');
+  note.id = 'googleAuthNote';
+  note.textContent =
+    'Sign in securely with your Google account.';
+
+  auth.append(googleBtn, note);
+
+  // New Google users choose their own Absol username.
+  async function createGoogleProfile(user) {
+    const uid = user.id;
+
+    const { data: existing, error: lookupError } = await sb
+      .from('profiles')
+      .select('*')
+      .eq('id', uid)
+      .maybeSingle();
+
+    if (lookupError) throw lookupError;
+
+    if (existing) return;
+
+    let username = '';
+
+    while (true) {
+      username = prompt(
+        'Choose your Absol username (3–20 letters, numbers or underscores):'
+      );
+
+      if (username === null) {
+        await sb.auth.signOut();
+        show('auth');
+        throw new Error('Username setup cancelled.');
+      }
+
+      username = username.trim().toLowerCase();
+
+      if (!/^[a-z0-9_]{3,20}$/.test(username)) {
+        alert('Use 3–20 letters, numbers or underscores.');
+        continue;
+      }
+
+      const { data: taken, error: checkError } = await sb
+        .from('profiles')
+        .select('id')
+        .eq('username', username)
+        .maybeSingle();
+
+      if (checkError) throw checkError;
+
+      if (taken) {
+        alert('That username is already taken. Choose another.');
+        continue;
+      }
+
+      break;
+    }
+
+    // Generate the encryption keys for this new account.
+    const kp = nacl.box.keyPair();
+
+    const { error: insertError } = await sb
+      .from('profiles')
+      .insert({
+        id: uid,
+        username: username,
+        public_key: b64(kp.publicKey)
+      });
+
+    if (insertError) throw insertError;
+
+    // Store the private key locally, as the existing app expects.
+    localStorage.setItem('sk:' + uid, b64(kp.secretKey));
+  }
+
+  // Wrap the existing startup routine without replacing its
+  // messaging, backup, profile, or encryption functionality.
+  start = async function () {
+    const { data: { session }, error } = await sb.auth.getSession();
+
+    if (error) throw error;
+
+    if (!session) {
+      show('auth');
+      return;
+    }
+
+    await createGoogleProfile(session.user);
+
+    // Continue through the existing Absol startup process.
+    return originalStart();
+  };
+
+  googleBtn.addEventListener('click', async function () {
+    googleBtn.disabled = true;
+    googleBtn.textContent = 'Connecting to Google…';
+
+    try {
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.href
+        }
+      });
+
+      if (error) throw error;
+
+    } catch (error) {
+      console.error('[Absol Google Auth]', error);
+      $('err').textContent =
+        error.message || 'Google sign-in failed. Please try again.';
+
+      googleBtn.disabled = false;
+      googleBtn.textContent = 'Continue with Google';
+    }
+  });
+
+  // Start only after this patch has installed its authentication logic.
+  start().catch(error => {
+    console.error('[Absol startup]', error);
+    show('auth');
+    $('err').textContent =
+      error.message || 'Could not start Absol. Please try again.';
+  });
+
+})();
+</script>
+<!-- ===== END ABSOL GOOGLE AUTH PATCH ===== -->
+
 </body>
 </html>
