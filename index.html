@@ -5379,12 +5379,32 @@ body.pblur #app,body.pblur dialog{filter:blur(26px)}
     opacity: .55;
     cursor: wait;
   }
-  #googleAuthNote {
-    margin-top: 12px;
-    font-size: 12px;
-    color: var(--muted);
-    text-align: center;
-  }
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.auth-divider span {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.auth-signup {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.auth-signup button {
+  color: var(--accent);
+  font-weight: 600;
+}
 </style>
 
 <script>
@@ -5395,22 +5415,8 @@ body.pblur #app,body.pblur dialog{filter:blur(26px)}
 
   // Replace the old username/password login interface.
   const auth = $('auth');
-  $('u').hidden = true;
-  $('p').hidden = true;
-  $('loginBtn').hidden = true;
-  $('signupBtn').hidden = true;
 
-  const googleBtn = document.createElement('button');
-  googleBtn.id = 'googleLoginBtn';
-  googleBtn.type = 'button';
-  googleBtn.textContent = 'Continue with Google';
-
-  const note = document.createElement('div');
-  note.id = 'googleAuthNote';
-  note.textContent =
-    'Sign in securely with your Google account.';
-
-  auth.append(googleBtn, note);
+  const googleBtn = $('googleLoginBtn');
 
   // New Google users choose their own Absol username.
   async function createGoogleProfile(user) {
