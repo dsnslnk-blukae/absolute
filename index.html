@@ -5499,6 +5499,7 @@ googleBtn.addEventListener('click', async function () {
 
   } catch (error) {
     console.error('[Absol Google Auth]', error);
+    alert('Google login error: ' + (error?.message || String(error)));
 
     $('err').textContent =
       error.message || 'Google sign-in failed. Please try again.';
