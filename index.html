@@ -7679,5 +7679,295 @@ body.absol-audio-open {
 </script>
 <!-- ============== END ABSOL UNIFIED ACTIONS ============== -->
 
+<!-- ============== ABSOL VISUAL REFINEMENTS ============== -->
+<style>
+/* 1. Custom pinned indicator */
+.convo .tx b .pinic{
+  display:inline-flex!important;
+  align-items:center;
+  justify-content:center;
+  width:16px;
+  height:16px;
+  margin:0 0 0 7px!important;
+  vertical-align:-2px;
+  color:var(--accent);
+  font-size:0!important;
+  line-height:1;
+}
+.convo .tx b .pinic svg{
+  display:block;
+  width:15px;
+  height:15px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+/* 2. Compact dock with consistent corners */
+#absActionDock{
+  box-sizing:border-box;
+  bottom:calc(3px + env(safe-area-inset-bottom,0px));
+  padding:7px 8px 2px;
+  border-radius:26px;
+}
+#absActionHint{
+  padding-top:5px;
+  padding-bottom:0;
+  line-height:1.2;
+}
+#absActionStrip,
+#absActionDock *{
+  box-sizing:border-box;
+}
+
+/* 3. Absol delete confirmation */
+.abs-delete-info{
+  display:flex;
+  align-items:center;
+  gap:13px;
+  padding:15px;
+  margin-top:12px;
+  border:1px solid var(--border);
+  border-radius:15px;
+  background:var(--surface2);
+}
+.abs-delete-icon{
+  width:40px;
+  height:40px;
+  flex:none;
+  display:grid;
+  place-items:center;
+  border-radius:12px;
+  background:color-mix(in srgb,var(--danger) 14%,var(--surface));
+  color:var(--danger);
+}
+.abs-delete-icon svg{
+  width:21px;
+  height:21px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.abs-delete-info b{
+  display:block;
+  font-size:13px;
+}
+.abs-delete-info small{
+  display:block;
+  margin-top:4px;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.5;
+}
+.abs-dialog .abs-delete-confirm{
+  background:var(--danger);
+  color:white;
+}
+</style>
+
+<script>
+(function(){
+  'use strict';
+
+  if(window.__absolVisualRefinements) return;
+  window.__absolVisualRefinements=true;
+
+  /* Replace the old pin glyph after every chat-list render */
+  const previousRenderList=renderList;
+
+  renderList=function(){
+    previousRenderList();
+
+    document.querySelectorAll('#convos .pinic').forEach(pin=>{
+      pin.innerHTML=
+        '<svg viewBox="0 0 24 24" aria-hidden="true">'+
+        '<path d="M8 3h8l-1.2 5 3.2 3v2H6v-2l3.2-3L8 3Z"/>'+
+        '<path d="M12 13v8"/>'+
+        '</svg>';
+      pin.setAttribute('aria-label','Pinned');
+      pin.title='Pinned';
+    });
+  };
+
+  /* Build the selected items using the same order as the list */
+  function getSelectedItems(){
+    const last={};
+    const items=[];
+
+    msgs.filter(visible).forEach(m=>{
+      last[otherId(m)]=m;
+    });
+
+    Object.keys(last).forEach(id=>{
+      items.push({kind:'dm',id});
+    });
+
+    Object.keys(groups).forEach(id=>{
+      items.push({kind:'group',id});
+    });
+
+    const time=x=>{
+      const m=x.kind==='dm'?last[x.id]:lastGroupMsg(x.id);
+      return m
+        ? +new Date(m.created_at)
+        : +(new Date(groups[x.id]?.created_at||0));
+    };
+
+    items.sort((a,b)=>{
+      const pinA=a.kind==='dm'?!!st(a.id).pinned:!!gset[a.id]?.pinned;
+      const pinB=b.kind==='dm'?!!st(b.id).pinned:!!gset[b.id]?.pinned;
+      if(pinA!==pinB) return pinB-pinA;
+
+      const favA=a.kind==='dm'?!!st(a.id).favorite:!!gset[a.id]?.favorite;
+      const favB=b.kind==='dm'?!!st(b.id).favorite:!!gset[b.id]?.favorite;
+      if(favA!==favB) return favB-favA;
+
+      return time(b)-time(a);
+    });
+
+    const rows=[...document.querySelectorAll('#convos > .convo')];
+
+    return rows
+      .map((row,index)=>row.classList.contains('abs-picked')?items[index]:null)
+      .filter(Boolean);
+  }
+
+  function showDeleteDialog(count){
+    return new Promise(resolve=>{
+      const d=document.createElement('dialog');
+      d.className='abs-dialog';
+
+      d.innerHTML=
+        '<h2>Remove chats?</h2>'+
+        '<p class="abs-sub">Remove these conversations from your chat list on this device?</p>'+
+        '<div class="abs-dialog-body">'+
+          '<div class="abs-delete-info">'+
+            '<span class="abs-delete-icon">'+
+              '<svg viewBox="0 0 24 24">'+
+                '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3"/>'+
+              '</svg>'+
+            '</span>'+
+            '<span><b>'+count+' chat'+(count===1?'':'s')+' selected</b>'+
+            '<small>This only affects your account on this device. New messages can bring these chats back.</small></span>'+
+          '</div>'+
+          '<div class="abs-dialog-actions">'+
+            '<button type="button" class="ghost" data-choice="cancel">Cancel</button>'+
+            '<button type="button" class="abs-delete-confirm" data-choice="remove">Remove</button>'+
+          '</div>'+
+        '</div>';
+
+      document.body.appendChild(d);
+
+      let finished=false;
+
+      function finish(value){
+        if(finished) return;
+        finished=true;
+        if(d.open) d.close();
+        d.remove();
+        resolve(value);
+      }
+
+      d.querySelector('[data-choice="cancel"]').onclick=()=>finish(false);
+      d.querySelector('[data-choice="remove"]').onclick=()=>finish(true);
+
+      d.addEventListener('cancel',e=>{
+        e.preventDefault();
+        finish(false);
+      });
+
+      d.showModal();
+    });
+  }
+
+  async function removeSelectedChats(){
+    const items=getSelectedItems();
+    if(!items.length) return;
+
+    const confirmed=await showDeleteDialog(items.length);
+    if(!confirmed) return;
+
+    const stamp=new Date().toISOString();
+
+    for(const x of items){
+      let ok;
+
+      if(x.kind==='dm'){
+        let mx=0;
+
+        msgs.forEach(m=>{
+          if(otherId(m)===x.id&&!m.pending){
+            mx=Math.max(mx,+new Date(m.created_at));
+          }
+        });
+
+        ok=await setSetting(x.id,{
+          deleted_before:mx
+            ? new Date(mx+1).toISOString()
+            : stamp
+        });
+      }else{
+        let mx=0;
+
+        gmsgs.forEach(m=>{
+          if(m.group_id===x.id&&!m.pending){
+            mx=Math.max(mx,+new Date(m.created_at));
+          }
+        });
+
+        ok=await setGSetting(x.id,{
+          cleared_before:mx
+            ? new Date(mx+1).toISOString()
+            : stamp
+        });
+      }
+
+      if(!ok) return;
+    }
+
+    const cancelSelection=document.querySelector(
+      '#absSelectHead [data-abs="close"]'
+    );
+
+    if(cancelSelection) cancelSelection.click();
+
+    renderList();
+    toast('Selected chats removed from your list');
+  }
+
+  /* Intercept only the multi-select Delete action */
+  const dock=document.getElementById('absActionDock');
+
+  if(dock){
+    dock.addEventListener('click',e=>{
+      const button=e.target.closest('[data-action="delete"]');
+      if(!button) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+
+      removeSelectedChats();
+    },true);
+  }
+
+  /* Apply the custom icon immediately if chats are already rendered */
+  document.querySelectorAll('#convos .pinic').forEach(pin=>{
+    pin.innerHTML=
+      '<svg viewBox="0 0 24 24" aria-hidden="true">'+
+      '<path d="M8 3h8l-1.2 5 3.2 3v2H6v-2l3.2-3L8 3Z"/>'+
+      '<path d="M12 13v8"/>'+
+      '</svg>';
+  });
+
+  console.log('[Absol] Visual refinements loaded.');
+})();
+</script>
+<!-- ============== END ABSOL VISUAL REFINEMENTS ============== -->
+
 </body>
 </html>
