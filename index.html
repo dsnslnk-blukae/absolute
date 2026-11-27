@@ -8192,5 +8192,19 @@ body.absol-audio-open {
 })();
 </script>
 <!-- ===== END ABSOL FIX ===== -->
+  <!-- ===== ABSOL FIX: dock swipe stays inside the dock ===== -->
+<style>
+#absActionStrip{touch-action:pan-x;overscroll-behavior-x:contain}
+</style>
+<script>
+(function(){
+  const stop = e => {
+    if (e.target.closest && e.target.closest('#absActionDock')) e.stopPropagation();
+  };
+  ['touchstart','touchmove','touchend','touchcancel'].forEach(n =>
+    document.addEventListener(n, stop, { capture: true, passive: true }));
+})();
+</script>
+<!-- ===== END ABSOL FIX ===== -->
 </body>
 </html>
