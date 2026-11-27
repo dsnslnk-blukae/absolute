@@ -6956,5 +6956,688 @@ body.absol-audio-open {
 </script>
 <!-- ===== END ABSOL UNIVERSAL AUDIO EXPANSION ===== -->
 
+<!-- =========================================================
+ ABSOL UI ENHANCEMENTS — ADD AT THE VERY END OF index.html
+ Swipe reply · New-message divider · Manual unread
+ Chat-list typing · Typing heartbeat
+ Copy feedback is already implemented in the existing app.
+========================================================= -->
+
+<style>
+/* ---------- Typing heartbeat ---------- */
+.ab-typing{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  color:#a0a0aa;
+  font-size:12px;
+  font-weight:600;
+}
+.ab-heart{
+  width:7px;
+  height:7px;
+  flex:none;
+  border-radius:50%;
+  background:#a0a0aa;
+  box-shadow:0 0 0 0 rgba(160,160,170,.35);
+  animation:abHeartbeat 1.25s ease-in-out infinite;
+}
+@keyframes abHeartbeat{
+  0%,100%{transform:scale(.85);opacity:.55}
+  35%{transform:scale(1.25);opacity:1;box-shadow:0 0 0 4px rgba(160,160,170,.12)}
+  55%{transform:scale(.95);opacity:.8}
+  75%{transform:scale(1.15);opacity:1}
+}
+
+/* ---------- New messages divider ---------- */
+.ab-new-divider{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin:14px 12px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.35px;
+  text-transform:uppercase;
+}
+.ab-new-divider:before,
+.ab-new-divider:after{
+  content:"";
+  height:1px;
+  flex:1;
+  background:var(--border);
+}
+.ab-new-divider span{
+  white-space:nowrap;
+}
+
+/* ---------- Manual unread control ---------- */
+.ab-unread-action{
+  flex:none;
+  border:1px solid var(--border);
+  border-radius:9px;
+  padding:5px 8px;
+  margin-left:6px;
+  background:var(--surface2);
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.2;
+}
+.ab-unread-action:active{transform:scale(.96)}
+.convo.ab-manual-unread .tx span{
+  color:var(--text);
+  font-weight:700;
+}
+.convo.ab-manual-unread{
+  background:rgba(160,160,170,.055);
+}
+
+/* ---------- Swipe reply feedback ---------- */
+#msgs .b.ab-swiping{
+  transition:transform .12s ease;
+}
+#msgs .b.ab-reply-ready{
+  outline:1px solid var(--accent);
+  outline-offset:2px;
+}
+</style>
+
+<script>
+(function(){
+  'use strict';
+
+  if (window.__absolEnhancementsLoaded) return;
+  window.__absolEnhancementsLoaded = true;
+
+  const P2 = window.P2;
+  const $ = id => document.getElementById(id);
+  const box = $('msgs');
+
+  if (!P2 || !box) {
+    console.warn('[Absol enhancements] Existing message system not found.');
+    return;
+  }
+
+  let activeUid = null;
+  let typingChannel = null;
+  let lastTypingSent = 0;
+  let swipe = null;
+
+  const typingUsers = Object.create(null);
+  const manualUnread = new Set();
+
+  const uid = () => me && me.id ? me.id : null;
+  const key = name => 'absol-ui:' + uid() + ':' + name;
+
+  function readStore(name, fallback){
+    try {
+      const value = localStorage.getItem(key(name));
+      return value ? JSON.parse(value) : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function writeStore(name, value){
+    try {
+      localStorage.setItem(key(name), JSON.stringify(value));
+    } catch(e) {
+      console.warn('[Absol enhancements] Local storage unavailable:', e);
+    }
+  }
+
+  function timestamp(m){
+    return m && m.created_at ? new Date(m.created_at).getTime() : 0;
+  }
+
+  function chatKey(){
+    return curGroup ? 'group:' + curGroup : 'dm:' + current;
+  }
+
+  function getMessages(){
+    return curGroup
+      ? gmsgs.filter(m => m.group_id === curGroup && gvisible(m))
+      : msgs.filter(m => otherId(m) === current && visible(m));
+  }
+
+  function incomingMessages(){
+    return getMessages()
+      .filter(m => m.sender_id !== me.id && !m.pending)
+      .sort((a,b) => timestamp(a) - timestamp(b));
+  }
+
+  function latestIncomingTime(){
+    const list = incomingMessages();
+    return list.length ? timestamp(list[list.length - 1]) : 0;
+  }
+
+  /* ---------- 1. New-message divider ---------- */
+
+  function drawNewDivider(){
+    if ($('chat').hidden) return;
+
+    const k = chatKey();
+    const list = incomingMessages();
+    if (!list.length) return;
+
+    const watermarks = readStore('read-watermarks', {});
+    const watermark = Number(watermarks[k] || 0);
+
+    const firstUnread = list.find(m => timestamp(m) > watermark);
+    if (!firstUnread) return;
+
+    const bubble = box.querySelector(
+      '.b.them[data-mid="' + CSS.escape(String(firstUnread.id)) + '"]'
+    );
+
+    if (!bubble) return;
+
+    const divider = document.createElement('div');
+    divider.className = 'ab-new-divider';
+    divider.dataset.abDivider = '1';
+
+    const label = document.createElement('span');
+    label.textContent = 'New messages';
+    divider.appendChild(label);
+
+    bubble.before(divider);
+  }
+
+  function saveCurrentWatermark(){
+    if (!uid() || !current && !curGroup) return;
+
+    const k = chatKey();
+    const watermarks = readStore('read-watermarks', {});
+    watermarks[k] = latestIncomingTime();
+    writeStore('read-watermarks', watermarks);
+  }
+
+  /* On first use, establish a baseline so old messages are not
+     incorrectly labelled as new. */
+  function initialiseWatermarks(){
+    const watermarks = readStore('read-watermarks', {});
+    let changed = false;
+
+    Object.keys(profiles || {}).forEach(id => {
+      const k = 'dm:' + id;
+      if (!(k in watermarks)) {
+        const list = msgs.filter(m =>
+          otherId(m) === id && m.sender_id !== me.id && !m.pending
+        );
+        watermarks[k] = list.reduce((n,m) => Math.max(n,timestamp(m)),0);
+        changed = true;
+      }
+    });
+
+    Object.keys(groups || {}).forEach(id => {
+      const k = 'group:' + id;
+      if (!(k in watermarks)) {
+        const list = gmsgs.filter(m =>
+          m.group_id === id && m.sender_id !== me.id && !m.pending
+        );
+        watermarks[k] = list.reduce((n,m) => Math.max(n,timestamp(m)),0);
+        changed = true;
+      }
+    });
+
+    if (changed) writeStore('read-watermarks', watermarks);
+  }
+
+  const originalRenderMessages = renderMsgs;
+  renderMsgs = function(){
+    originalRenderMessages();
+
+    try {
+      box.querySelectorAll('[data-ab-divider]').forEach(x => x.remove());
+      drawNewDivider();
+
+      /* Messages received while the chat is already open are
+         considered viewed, matching the app's existing read flow. */
+      if (!document.hidden && !$('chat').hidden) {
+        saveCurrentWatermark();
+      }
+    } catch(e) {
+      console.warn('[Absol divider]', e);
+    }
+  };
+
+  const originalOpenChat = openChat;
+  openChat = async function(id){
+    const result = await originalOpenChat(id);
+
+    if (uid() && current === id && !curGroup) {
+      const watermarks = readStore('read-watermarks', {});
+      const k = 'dm:' + id;
+
+      if (!(k in watermarks)) {
+        const list = msgs.filter(m =>
+          otherId(m) === id && m.sender_id !== me.id && !m.pending
+        );
+        watermarks[k] = list.reduce((n,m) => Math.max(n,timestamp(m)),0);
+        writeStore('read-watermarks', watermarks);
+      }
+
+      box.querySelectorAll('[data-ab-divider]').forEach(x => x.remove());
+      drawNewDivider();
+      saveCurrentWatermark();
+    }
+
+    return result;
+  };
+
+  const originalOpenGroup = openGroup;
+  openGroup = function(id){
+    originalOpenGroup(id);
+
+    if (uid() && curGroup === id) {
+      const watermarks = readStore('read-watermarks', {});
+      const k = 'group:' + id;
+
+      if (!(k in watermarks)) {
+        const list = gmsgs.filter(m =>
+          m.group_id === id && m.sender_id !== me.id && !m.pending
+        );
+        watermarks[k] = list.reduce((n,m) => Math.max(n,timestamp(m)),0);
+        writeStore('read-watermarks', watermarks);
+      }
+
+      box.querySelectorAll('[data-ab-divider]').forEach(x => x.remove());
+      drawNewDivider();
+      saveCurrentWatermark();
+    }
+  };
+
+  /* ---------- 2. Manual mark unread ---------- */
+
+  function loadManualUnread(){
+    manualUnread.clear();
+    const stored = readStore('manual-unread', []);
+    if (Array.isArray(stored)) stored.forEach(x => manualUnread.add(x));
+  }
+
+  function saveManualUnread(){
+    writeStore('manual-unread', [...manualUnread]);
+  }
+
+  function markUnread(kind, id){
+    const k = kind + ':' + id;
+
+    if (manualUnread.has(k)) {
+      manualUnread.delete(k);
+      toast('Marked as read');
+    } else {
+      manualUnread.add(k);
+      toast('Marked as unread');
+    }
+
+    saveManualUnread();
+    renderList();
+  }
+
+  function decorateManualUnread(){
+    if (!uid()) return;
+
+    const rows = [...$('convos').querySelectorAll(':scope > .convo')];
+    const last = {}, items = [];
+
+    msgs.filter(visible).forEach(m => {
+      last[otherId(m)] = m;
+    });
+
+    Object.keys(last).forEach(id => {
+      items.push({
+        kind:'dm',
+        id,
+        t:timestamp(last[id]),
+        fav:st(id).favorite ? 1 : 0
+      });
+    });
+
+    Object.keys(groups).forEach(id => {
+      const m = lastGroupMsg(id);
+      items.push({
+        kind:'group',
+        id,
+        t:timestamp(m) || timestamp(groups[id]),
+        fav:(gset[id] || {}).favorite ? 1 : 0
+      });
+    });
+
+    items.sort((a,b) => (b.fav-a.fav) || (b.t-a.t));
+
+    if (rows.length !== items.length) return;
+
+    rows.forEach((row,index) => {
+      const item = items[index];
+      const k = item.kind + ':' + item.id;
+      const unread = manualUnread.has(k);
+
+      row.classList.toggle('ab-manual-unread', unread);
+
+      let action = row.querySelector('.ab-unread-action');
+      if (!action) {
+        action = document.createElement('button');
+        action.type = 'button';
+        action.className = 'ab-unread-action';
+        action.addEventListener('click', e => {
+          e.preventDefault();
+          e.stopPropagation();
+          markUnread(item.kind, item.id);
+        });
+        row.appendChild(action);
+      }
+
+      action.textContent = unread ? 'Mark read' : 'Mark unread';
+      action.setAttribute('aria-label', unread ? 'Mark chat as read' : 'Mark chat as unread');
+    });
+  }
+
+  const originalRenderList = renderList;
+  renderList = function(){
+    originalRenderList();
+
+    try {
+      decorateManualUnread();
+      decorateTypingRows();
+    } catch(e) {
+      console.warn('[Absol chat list]', e);
+    }
+  };
+
+  /* Opening a manually unread conversation clears its local flag. */
+  function clearManualUnread(kind,id){
+    if (!id) return;
+    manualUnread.delete(kind + ':' + id);
+    saveManualUnread();
+  }
+
+  const openChatBeforeUnread = openChat;
+  openChat = async function(id){
+    clearManualUnread('dm',id);
+    return openChatBeforeUnread(id);
+  };
+
+  const openGroupBeforeUnread = openGroup;
+  openGroup = function(id){
+    clearManualUnread('group',id);
+    return openGroupBeforeUnread(id);
+  };
+
+  /* ---------- 3. Swipe to reply ---------- */
+
+  function replyToBubble(bubble){
+    if (!bubble || !bubble.dataset.mid) return;
+
+    const group = !!curGroup;
+    const message = (group ? gmsgs : msgs).find(
+      m => String(m.id) === String(bubble.dataset.mid)
+    );
+
+    if (!message || message.pending) return;
+
+    const text = group ? decryptG(message) : decrypt(message);
+    const action = P2.menu.find(item =>
+      String(item.label).toLowerCase().includes('reply')
+    );
+
+    if (!action || !action.show({
+      kind:group ? 'group' : 'dm',
+      m:message,
+      t:text,
+      gone:P2.isGone(message),
+      mine:message.sender_id === me.id
+    })) return;
+
+    action.run({
+      kind:group ? 'group' : 'dm',
+      m:message,
+      t:text,
+      gone:P2.isGone(message),
+      mine:message.sender_id === me.id
+    });
+
+    bubble.classList.add('ab-reply-ready');
+    setTimeout(() => bubble.classList.remove('ab-reply-ready'), 500);
+  }
+
+  box.addEventListener('touchstart', e => {
+    const bubble = e.target.closest('.b[data-mid]');
+    if (!bubble || e.touches.length !== 1) return;
+
+    const touch = e.touches[0];
+    swipe = {
+      bubble,
+      x:touch.clientX,
+      y:touch.clientY,
+      moved:false
+    };
+  }, {passive:true});
+
+  box.addEventListener('touchmove', e => {
+    if (!swipe || e.touches.length !== 1) return;
+
+    const touch = e.touches[0];
+    const dx = touch.clientX - swipe.x;
+    const dy = touch.clientY - swipe.y;
+
+    if (Math.abs(dx) > 12 || Math.abs(dy) > 12) swipe.moved = true;
+
+    /* Reply gesture: swipe right, with limited vertical movement. */
+    if (dx > 12 && Math.abs(dy) < 45) {
+      swipe.bubble.classList.add('ab-swiping');
+      swipe.bubble.style.transform = 'translateX(' + Math.min(dx * .35, 48) + 'px)';
+    }
+  }, {passive:true});
+
+  function finishSwipe(){
+    if (!swipe) return;
+
+    const bubble = swipe.bubble;
+    const dx = bubble.getBoundingClientRect().left - swipe.x;
+    const moved = swipe.moved;
+
+    bubble.style.transform = '';
+    bubble.classList.remove('ab-swiping');
+
+    /* Use the tracked finger movement rather than the final
+       element position to decide whether the gesture qualifies. */
+    if (moved && swipe.lastDx >= 75) replyToBubble(bubble);
+    swipe = null;
+  }
+
+  box.addEventListener('touchend', e => {
+    if (!swipe) return;
+
+    const touch = e.changedTouches[0];
+    swipe.lastDx = touch.clientX - swipe.x;
+    finishSwipe();
+  }, {passive:true});
+
+  box.addEventListener('touchcancel', () => {
+    if (swipe) {
+      swipe.bubble.style.transform = '';
+      swipe.bubble.classList.remove('ab-swiping');
+    }
+    swipe = null;
+  }, {passive:true});
+
+  /* ---------- 4. Typing heartbeat and chat-list preview ---------- */
+
+  function isTyping(id){
+    return !!id && Date.now() - (typingUsers[id] || 0) < 3500;
+  }
+
+  function heartbeat(){
+    const wrap = document.createElement('span');
+    wrap.className = 'ab-typing';
+
+    const dot = document.createElement('i');
+    dot.className = 'ab-heart';
+
+    const label = document.createElement('span');
+    label.textContent = 'typing';
+
+    wrap.append(dot,label);
+    return wrap;
+  }
+
+  function decorateHeader(){
+    const sub = $('chatSub');
+    if (!sub || !current || curGroup) return;
+
+    if (isTyping(current)) {
+      sub.replaceChildren(heartbeat());
+      sub.classList.add('typ');
+    } else {
+      sub.classList.remove('typ');
+    }
+  }
+
+  const originalChatChrome = chatChrome;
+  chatChrome = function(){
+    originalChatChrome();
+    decorateHeader();
+  };
+
+  function decorateTypingRows(){
+    if (!uid()) return;
+
+    const rows = [...$('convos').querySelectorAll(':scope > .convo')];
+    const last = {}, items = [];
+
+    msgs.filter(visible).forEach(m => {
+      last[otherId(m)] = m;
+    });
+
+    Object.keys(last).forEach(id => {
+      items.push({kind:'dm',id,t:timestamp(last[id]),fav:st(id).favorite?1:0});
+    });
+
+    Object.keys(groups).forEach(id => {
+      const m = lastGroupMsg(id);
+      items.push({kind:'group',id,t:timestamp(m)||timestamp(groups[id]),fav:(gset[id]||{}).favorite?1:0});
+    });
+
+    items.sort((a,b) => (b.fav-a.fav) || (b.t-a.t));
+
+    if (rows.length !== items.length) return;
+
+    rows.forEach((row,index) => {
+      const item = items[index];
+      if (item.kind !== 'dm') return;
+
+      const preview = row.querySelector('.tx span');
+      if (!preview) return;
+
+      if (isTyping(item.id)) {
+        preview.replaceChildren(heartbeat());
+      } else if (preview.querySelector('.ab-typing')) {
+        /* Restore the normal preview on the next list render. */
+        const m = last[item.id];
+        if (m) {
+          preview.textContent =
+            (m.sender_id === me.id ? 'You: ' : '') +
+            (decrypt(m) ?? '🔒 Can’t decrypt') +
+            ' · ' + fmtTime(m.created_at);
+        }
+      }
+    });
+  }
+
+  function startTypingChannel(){
+    if (!uid() || !sb) return;
+
+    if (typingChannel) sb.removeChannel(typingChannel);
+
+    typingChannel = sb.channel('absol-typing-ui', {
+      config:{broadcast:{self:false}}
+    });
+
+    typingChannel
+      .on('broadcast',{event:'typing'},({payload}) => {
+        if (!uid() || !payload || payload.to !== me.id || !payload.from) return;
+
+        typingUsers[payload.from] = Date.now();
+
+        if (current === payload.from && !curGroup && !$('chat').hidden) {
+          decorateHeader();
+        }
+
+        decorateTypingRows();
+      })
+      .subscribe();
+  }
+
+  $('msgInput').addEventListener('input', () => {
+    if (!uid() || !typingChannel || !current || curGroup) return;
+    if (!$('msgInput').value.trim() || st(current).blocked) return;
+
+    const now = Date.now();
+    if (now - lastTypingSent < 2500) return;
+
+    lastTypingSent = now;
+
+    typingChannel.send({
+      type:'broadcast',
+      event:'typing',
+      payload:{from:me.id,to:current}
+    });
+  });
+
+  /* Expire typing state and refresh the visible indicators. */
+  const refreshTimer = setInterval(() => {
+    if (!uid()) return;
+
+    let changed = false;
+
+    Object.keys(typingUsers).forEach(id => {
+      if (!isTyping(id)) {
+        delete typingUsers[id];
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      if (current && !curGroup && !$('chat').hidden) decorateHeader();
+      decorateTypingRows();
+    }
+  }, 900);
+
+  /* ---------- Account lifecycle ---------- */
+
+  const lifecycleTimer = setInterval(() => {
+    const id = uid();
+
+    if (id && id !== activeUid) {
+      activeUid = id;
+      loadManualUnread();
+      initialiseWatermarks();
+      startTypingChannel();
+      renderList();
+    } else if (!id && activeUid) {
+      activeUid = null;
+      manualUnread.clear();
+      Object.keys(typingUsers).forEach(k => delete typingUsers[k]);
+
+      if (typingChannel) {
+        sb.removeChannel(typingChannel);
+        typingChannel = null;
+      }
+    }
+  }, 1000);
+
+  window.addEventListener('beforeunload', () => {
+    clearInterval(refreshTimer);
+    clearInterval(lifecycleTimer);
+    if (typingChannel && sb) sb.removeChannel(typingChannel);
+  });
+
+  console.log('[Absol enhancements] Loaded.');
+})();
+</script>
+
+<!-- ================= END ABSOL UI ENHANCEMENTS ================= -->
+
 </body>
 </html>
