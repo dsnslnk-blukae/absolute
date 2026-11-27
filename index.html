@@ -6130,6 +6130,72 @@ googleBtn.addEventListener('click', async function () {
 })();
 </script>
 <!-- ===== END ABSOL: CALLS IN CHAT + GOOGLE SETUP PAGE ===== -->
+<!-- ===== ABSOL THEME POP PATCH =====-->
+<style>
+/* soft glow at the top of the app, tinted by the theme accent */
+#app{background:radial-gradient(130% 38% at 50% -8%,color-mix(in srgb,var(--accent) 14%,transparent),transparent 70%),var(--bg)}
+
+/* a bit more definition and life */
+.card,.scard,.dcard{border:1px solid var(--border)}
+.brand{font-weight:800}
+.sec,.dlabel{color:color-mix(in srgb,var(--accent) 70%,var(--muted))}
+.switch{border:1px solid var(--border)}
+.fab{box-shadow:0 8px 20px color-mix(in srgb,var(--accent) 28%,transparent)!important}
+.iconbtn,.searchpill,.chip{border:1px solid color-mix(in srgb,var(--border) 80%,transparent)}
+.chip.on{border-color:transparent}
+.convo:active,.convo.picked{background:color-mix(in srgb,var(--accent) 12%,var(--surface))}
+.b.them{border:1px solid var(--border)}
+.ub{font-weight:800}
+.tag{font-weight:700}
+
+/* black and white themes: nothing coloured */
+:root[data-theme="default"] .i.online,
+:root[data-theme="dark"] .i.online{color:#e6e6e6}
+:root[data-theme="default"] .cb.green,
+:root[data-theme="dark"] .cb.green{background:#e6e6e6;color:#0b0b0b}
+:root[data-theme="default"] .cb.red,
+:root[data-theme="dark"] .cb.red{background:#3a3a3a;color:#fff}
+:root[data-theme="default"] #app,
+:root[data-theme="dark"] #app{background:radial-gradient(130% 38% at 50% -8%,rgba(255,255,255,.06),transparent 70%),var(--bg)}
+</style>
+<script>
+(function(){
+  const DG = '#e07a84';   /* soft red, only for warnings and delete */
+  const mk = (n, hue, v) => { v.danger = DG; v.partner = v.accent2; v.hi = v.accent; return { n, hue, v }; };
+  const T = {
+    /* Default: pure black and white */
+    default: mk('Default', 0, { bg:'#0a0a0a', surface:'#141414', surface2:'#1e1e1e', border:'#2c2c2c', text:'#f4f4f4', muted:'#8e8e8e',
+      accent:'#f4f4f4', accent2:'#c9c9c9', 'accent-text':'#0a0a0a', mine:'#f4f4f4', 'mine-text':'#0a0a0a', theirs:'#1e1e1e' }),
+    /* Dark: charcoal with white text and a black sent bubble */
+    dark: mk('Dark', 0, { bg:'#131314', surface:'#1b1b1d', surface2:'#252528', border:'#333337', text:'#ededed', muted:'#8b8b92',
+      accent:'#ededed', accent2:'#b8b8bf', 'accent-text':'#101012', mine:'#050505', 'mine-text':'#f4f4f4', theirs:'#252528' }),
+    lavender: mk('Lavender', 262, { bg:'#17122b', surface:'#211a3c', surface2:'#2d2452', border:'#3b316b', text:'#f1ecff', muted:'#a99fcf',
+      accent:'#a98bff', accent2:'#cdbfff', 'accent-text':'#170f33', mine:'#7b60e3', 'mine-text':'#ffffff', theirs:'#2d2452' }),
+    blue: mk('Blue', 214, { bg:'#0b1328', surface:'#121e3b', surface2:'#1a2a50', border:'#273c6e', text:'#eaf1ff', muted:'#8fa6d3',
+      accent:'#5a9bff', accent2:'#b4d1ff', 'accent-text':'#06142e', mine:'#3b72d9', 'mine-text':'#ffffff', theirs:'#1a2a50' }),
+    green: mk('Dark green', 152, { bg:'#0a1710', surface:'#11251a', surface2:'#183526', border:'#25523b', text:'#e8f8ee', muted:'#8fc0a3',
+      accent:'#3fc88a', accent2:'#aeeccc', 'accent-text':'#04160c', mine:'#26905f', 'mine-text':'#ffffff', theirs:'#183526' }),
+    orange: mk('Orange', 28, { bg:'#1a0f08', surface:'#271810', surface2:'#362116', border:'#4b3020', text:'#fff0e2', muted:'#c9a688',
+      accent:'#f39a45', accent2:'#ffd0a0', 'accent-text':'#241003', mine:'#b9631b', 'mine-text':'#ffffff', theirs:'#362116' }),
+    rose: mk('Rose sunset', 345, { bg:'#1c0d15', surface:'#2a1420', surface2:'#3a1d2e', border:'#542a43', text:'#ffeff4', muted:'#cf9fb4',
+      accent:'#f0648a', accent2:'#ffbdd0', 'accent-text':'#2b0713', mine:'#c93d68', 'mine-text':'#ffffff', theirs:'#3a1d2e' })
+  };
+  Object.keys(THEMES).forEach(k => delete THEMES[k]);
+  ['default', 'dark', 'lavender', 'blue', 'green', 'orange', 'rose'].forEach(k => { THEMES[k] = T[k]; });
+
+  applyTheme = function(k){
+    const key = THEMES[k] ? k : 'lavender', t = THEMES[key], r = document.documentElement.style;
+    Object.entries(t.v).forEach(([a, b]) => r.setProperty('--' + a, b));
+    r.setProperty('--grad', t.v.accent);
+    document.documentElement.setAttribute('data-theme', key);
+    themeHue = t.hue; localStorage.setItem('absol-theme', key);
+    document.querySelector('meta[name=theme-color]').content = t.v.bg;
+    try { if (me){ renderList(); if (!document.getElementById('chat').hidden) renderMsgs(); } } catch {}
+  };
+  applyTheme(localStorage.getItem('absol-theme') || 'lavender');
+})();
+</script>
+<!-- ===== END ABSOL THEME POP PATCH ===== -->
 
 </body>
 </html>
