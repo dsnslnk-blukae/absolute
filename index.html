@@ -8224,7 +8224,7 @@ body.absol-audio-open {
 })();
 </script>
 <!-- ===== END ABSOL FIX ===== -->
-  <!-- ===== ABSOL FIX 2: silent Drive restore + clearer restore dialog ===== -->
+  <!-- ===== ABSOL FIX 3: Drive restore with a visible reason ===== -->
 <style>
 #driveDlg input{display:none}
 #rsDlg:not(.pp) #rsPass,
@@ -8235,15 +8235,21 @@ body.absol-audio-open {
 </style>
 <script>
 (function(){
-  const OP = 'absol-drive-op', API = 'https://www.googleapis.com';
-  const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+  const OP = 'absol-drive-op', ERR = 'absol-drive-err', PK = 'absol-drive-pending';
+  const API = 'https://www.googleapis.com', SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
   const origAsk = askRestore, dlg = document.getElementById('rsDlg');
+  const note = t => { try { sessionStorage.setItem(ERR, String(t)); } catch {} };
 
-  /* remember the last Drive-related message so the dialog can show it */
+  /* remember Drive-related messages, and replace the old passphrase prompt with a clear message */
   const _toast = toast;
-  toast = function(t){
-    try { if (/drive|google|backup|passphrase|key/i.test(String(t))) sessionStorage.setItem('absol-drive-err', String(t)); } catch {}
-    return _toast.apply(this, arguments);
+  toast = function(t){ if (/drive|google|backup|key/i.test(String(t))) note(t); return _toast.apply(this, arguments); };
+  const _prompt = window.prompt;
+  window.prompt = function(m){
+    if (/passphrase you set for this backup/i.test(String(m))){
+      note('Your Drive backup was made with a passphrase. On a device that has your key, open Settings, Account and security, Update your backup, to replace it with one that needs no passphrase.');
+      return null;
+    }
+    return _prompt.apply(window, arguments);
   };
 
   /* dialog layout: Drive first, passphrase hidden until asked for */
@@ -8261,6 +8267,12 @@ body.absol-audio-open {
   }
   $('rsFresh').textContent = 'Skip and start with a new key';
   $('rsCancel').textContent = 'Log out';
+  $('rsMsg').after(el('div', { id: 'rsDbg', className: 'hint', style: 'font-size:11px;opacity:.7;margin-top:6px' }));
+
+  /* "just went to Google" marker (3 minutes) */
+  const isPend = uid => { const [u, t] = (sessionStorage.getItem(PK) || '').split('|'); return u === uid && Date.now() - (+t) < 180000; };
+  const setPend = uid => sessionStorage.setItem(PK, uid + '|' + Date.now());
+  const clrPend = () => sessionStorage.removeItem(PK);
 
   async function driveKey(tok, prof){
     const H = { Authorization: 'Bearer ' + tok };
@@ -8272,25 +8284,25 @@ body.absol-audio-open {
     r = await fetch(API + '/drive/v3/files/' + f.id + '?alt=media', { headers: H });
     if (!r.ok) throw new Error('Google Drive error ' + r.status);
     const o = JSON.parse(await r.text());
-    if (o.mode !== 'plain' || !o.sk) throw new Error('This backup was made with a passphrase. Make a new one without a passphrase on your old phone');
+    if (o.mode !== 'plain' || !o.sk) throw new Error('This backup was made with a passphrase. Replace it from a device that has your key');
     const sk = unb64(o.sk);
     if (b64(nacl.box.keyPair.fromSecretKey(sk).publicKey) !== prof.public_key) throw new Error('This backup doesn’t match your account’s current key');
     return sk;
   }
 
   askRestore = async function(prof){
-    let why = '';
+    let why = '', dbg = '';
     try {
       const { data: { session } } = await sb.auth.getSession();
-      const user = session && session.user;
-      const linked = user && (user.identities || []).some(i => i.provider === 'google');
-      const k = 'absol-autodrive:' + (user && user.id);
-      if (linked && Date.now() - (+localStorage.getItem(k) || 0) > 600000){
-        localStorage.setItem(k, String(Date.now()));            /* one automatic try */
-        sessionStorage.removeItem('absol-drive-err');
-        if (session.provider_token){
-          return { sk: await driveKey(session.provider_token, prof) };
-        }
+      const user = session && session.user, uid = user && user.id;
+      const linked = !!(user && (user.identities || []).some(i => i.provider === 'google'));
+      const token = !!(session && session.provider_token), pend = isPend(uid);
+      dbg = 'Google linked: ' + (linked ? 'yes' : 'no') + ' · Drive token: ' + (token ? 'yes' : 'no') + ' · came back from Google: ' + (pend ? 'yes' : 'no');
+      if (!linked) why = 'This account has no linked Google, so Drive restore is not available.';
+      else if (pend){ clrPend(); why = sessionStorage.getItem(ERR) || 'Google Drive gave no result and no message.'; }
+      else {
+        setPend(uid); sessionStorage.removeItem(ERR);
+        if (token){ const sk = await driveKey(session.provider_token, prof); clrPend(); return { sk }; }
         _toast('Restoring from Google Drive…');
         localStorage.setItem(OP, JSON.stringify({ op: 'restore', t: Date.now() }));
         const { data, error } = await sb.auth.signInWithOAuth({ provider: 'google', options: {
@@ -8298,18 +8310,17 @@ body.absol-audio-open {
           queryParams: { prompt: 'select_account consent' } } });
         if (error || !data || !data.url) throw (error || new Error('Google sign-in URL missing'));
         location.assign(data.url);
-        return new Promise(() => {});                            /* page is leaving for Google */
+        return new Promise(() => {});                         /* page is leaving for Google */
       }
-      if (linked && Date.now() - (+localStorage.getItem(k) || 0) <= 600000) why = sessionStorage.getItem('absol-drive-err') || '';
-    } catch (e){ localStorage.removeItem(OP); why = e.message || String(e); }
+    } catch (e){ localStorage.removeItem(OP); clrPend(); why = e.message || String(e); }
     dlg.classList.remove('pp'); tog.textContent = 'Use a passphrase instead';
     const p = origAsk(prof);
-    if (why) $('rsMsg').textContent = 'Drive restore did not work: ' + why;
+    $('rsMsg').textContent = why ? 'Drive restore did not work: ' + why : '';
+    $('rsDbg').textContent = dbg;
     return p;
   };
 })();
 </script>
-<!-- ===== END ABSOL FIX 2 ===== -->
-
+<!-- ===== END ABSOL FIX 3 ===== -->
 </body>
 </html>
