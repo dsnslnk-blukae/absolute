@@ -8322,5 +8322,33 @@ body.absol-audio-open {
 })();
 </script>
 <!-- ===== END ABSOL FIX 3 ===== -->
+  <!-- ===== ABSOL FIX 4: ask for Drive permission when the token lacks it ===== -->
+<script>
+(function(){
+  const prevAsk = askRestore;
+  askRestore = async function(prof){
+    const orig = sb.auth.getSession.bind(sb.auth);
+    let strip = false;
+    try {
+      const { data: { session } } = await orig();
+      if (session && session.provider_token){
+        const r = await fetch('https://oauth2.googleapis.com/tokeninfo?access_token=' + encodeURIComponent(session.provider_token));
+        const j = r.ok ? await r.json() : {};
+        if (!/drive\.appdata/.test(j.scope || '')) strip = true;   /* plain Google login: no Drive permission */
+      }
+    } catch (e){ console.warn('[drive scope check]', e); }
+    if (strip){
+      sb.auth.getSession = async () => {
+        const x = await orig();
+        if (x.data && x.data.session) x.data.session = { ...x.data.session, provider_token: null };
+        return x;
+      };
+    }
+    try { return await prevAsk(prof); }
+    finally { if (strip) sb.auth.getSession = orig; }
+  };
+})();
+</script>
+<!-- ===== END ABSOL FIX 4 ===== -->
 </body>
 </html>
