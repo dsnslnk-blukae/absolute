@@ -508,8 +508,15 @@ function show(name){ for (const s of ['auth','list','chat','search','profile','d
 function toast(t){ const el = $('toast'); el.textContent = t; el.classList.add('on'); setTimeout(() => el.classList.remove('on'), 2500); }
 function friendly(e){
   const m = (e && e.message) || String(e);
-  if (/invalid login/i.test(m)) return 'Wrong username or password';
-  if (/already registered|already exists|duplicate/i.test(m)) return 'That username is already taken';
+
+  if (/invalid login|non-2xx|functionshttperror/i.test(m)) {
+    return 'Incorrect username or password. Please try again.';
+  }
+
+  if (/already registered|already exists|duplicate/i.test(m)) {
+    return 'That username is already taken.';
+  }
+
   return m;
 }
 
