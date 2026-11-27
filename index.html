@@ -6651,5 +6651,202 @@ googleBtn.addEventListener('click', async function () {
 </script>
 <!-- ===== END ABSOL VOICE PLAYER ENHANCEMENTS ===== -->
 
+<!-- ===== ABSOL EXPANDABLE VOICE PLAYER ===== -->
+<style>
+.vm .absol-expand-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  opacity: .75;
+  cursor: pointer;
+  font-size: 17px;
+}
+
+.vm .absol-expand-btn:active {
+  transform: scale(.94);
+}
+
+.absol-audio-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: rgba(0,0,0,.58);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.vm.absol-audio-expanded {
+  position: fixed !important;
+  z-index: 9999 !important;
+  left: 50% !important;
+  top: 50% !important;
+  transform: translate(-50%,-50%) !important;
+  width: min(520px, calc(100vw - 32px)) !important;
+  min-width: 0 !important;
+  max-width: 520px !important;
+  box-sizing: border-box;
+  padding: 24px !important;
+  gap: 16px !important;
+  border: 1px solid var(--border, var(--accent)) !important;
+  border-radius: 24px !important;
+  background: var(--surface, #211a30) !important;
+  color: var(--text, #fff) !important;
+  box-shadow: 0 24px 80px rgba(0,0,0,.4) !important;
+}
+
+.vm.absol-audio-expanded .pp {
+  width: 54px;
+  height: 54px;
+}
+
+.vm.absol-audio-expanded .pp .i {
+  width: 24px;
+  height: 24px;
+}
+
+.vm.absol-audio-expanded .vmid {
+  min-width: 0;
+}
+
+.vm.absol-audio-expanded .bars {
+  height: 76px;
+  gap: 3px;
+}
+
+.vm.absol-audio-expanded .bars i {
+  max-width: 9px;
+}
+
+.vm.absol-audio-expanded .vt {
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.vm.absol-audio-expanded .absol-expand-btn {
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+}
+
+body.absol-audio-open {
+  overflow: hidden;
+}
+
+@media (max-width: 480px) {
+  .vm.absol-audio-expanded {
+    padding: 20px !important;
+    border-radius: 21px !important;
+  }
+}
+</style>
+
+<script>
+(function () {
+  if (window.__absolExpandableVoice) return;
+  window.__absolExpandableVoice = true;
+
+  let activePlayer = null;
+  let backdrop = null;
+
+  function closeExpanded() {
+    if (!activePlayer) return;
+
+    activePlayer.classList.remove('absol-audio-expanded');
+    activePlayer = null;
+
+    if (backdrop) {
+      backdrop.remove();
+      backdrop = null;
+    }
+
+    document.body.classList.remove('absol-audio-open');
+  }
+
+  function expandPlayer(player) {
+    if (activePlayer === player) {
+      closeExpanded();
+      return;
+    }
+
+    closeExpanded();
+
+    activePlayer = player;
+
+    backdrop = document.createElement('div');
+    backdrop.className = 'absol-audio-backdrop';
+    backdrop.addEventListener('click', closeExpanded);
+
+    document.body.appendChild(backdrop);
+
+    player.classList.add('absol-audio-expanded');
+    document.body.classList.add('absol-audio-open');
+  }
+
+  function enhance(player) {
+    if (player.dataset.expandReady) return;
+
+    player.dataset.expandReady = '1';
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'absol-expand-btn';
+    button.textContent = '⛶';
+    button.setAttribute('aria-label', 'Expand voice player');
+    button.title = 'Expand voice player';
+
+    button.addEventListener('click', event => {
+      event.stopPropagation();
+      expandPlayer(player);
+
+      const expanded = player.classList.contains(
+        'absol-audio-expanded'
+      );
+
+      button.textContent = expanded ? '×' : '⛶';
+      button.setAttribute(
+        'aria-label',
+        expanded ? 'Close expanded player' : 'Expand voice player'
+      );
+    });
+
+    player.appendChild(button);
+  }
+
+  function scan() {
+    document.querySelectorAll('.vm').forEach(enhance);
+  }
+
+  const observer = new MutationObserver(scan);
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  scan();
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && activePlayer) {
+      const player = activePlayer;
+      closeExpanded();
+
+      const button = player.querySelector('.absol-expand-btn');
+      if (button) {
+        button.textContent = '⛶';
+        button.setAttribute('aria-label', 'Expand voice player');
+      }
+    }
+  });
+
+})();
+</script>
+<!-- ===== END ABSOL EXPANDABLE VOICE PLAYER ===== -->
+
 </body>
 </html>
