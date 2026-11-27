@@ -7337,5 +7337,50 @@ body.absol-audio-open {
 </script>
 <!-- ============== END ABSOL MULTI-SELECT TOOLBAR ============== -->
 
+<!-- ABSOL TOOLBAR CORRECTION -->
+<script>
+(function(){
+  const strip = document.getElementById('absActionStrip');
+  if (!strip) return;
+
+  // Remove the More card entirely.
+  strip.querySelector('[data-action="more"]')?.remove();
+
+  // Make Mute the fourth initial action.
+  const mute = strip.querySelector('[data-action="mute"]');
+  if (mute) {
+    const firstFour = [...strip.children].slice(0, 4);
+    if (firstFour.includes(mute)) {
+      strip.insertBefore(mute, firstFour[3].nextSibling);
+    } else {
+      strip.insertBefore(mute, strip.children[3] || null);
+    }
+  }
+
+  // Remove the misleading placeholder action messages.
+  strip.querySelectorAll('[data-action]').forEach(button => {
+    button.addEventListener('click', function(e){
+      if (['remind','delete','pin','mute','read','favourite','group'].includes(this.dataset.action)) {
+        e.stopImmediatePropagation();
+      }
+    }, true);
+  });
+
+  // Always begin at the first card when selection starts.
+  const dock = document.getElementById('absActionDock');
+  if (dock) {
+    new MutationObserver(() => {
+      if (dock.classList.contains('on') && strip.scrollLeft !== 0) {
+        strip.scrollLeft = 0;
+      }
+    }).observe(dock, {attributes:true, attributeFilter:['class']});
+  }
+
+  const hint = document.getElementById('absActionHint');
+  if (hint) hint.textContent = 'Swipe left to see more actions';
+})();
+</script>
+<!-- END ABSOL TOOLBAR CORRECTION -->
+
 </body>
 </html>
