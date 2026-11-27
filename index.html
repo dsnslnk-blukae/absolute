@@ -6651,67 +6651,113 @@ googleBtn.addEventListener('click', async function () {
 </script>
 <!-- ===== END ABSOL VOICE PLAYER ENHANCEMENTS ===== -->
 
-<!-- ===== ABSOL EXPANDABLE VOICE PLAYER ===== -->
+<!-- ===== ABSOL UNIVERSAL AUDIO EXPANSION ===== -->
 <style>
-.vm .absol-expand-btn {
+/* Consistent expand icon */
+.absol-expand-btn {
+  width: 34px;
+  height: 34px;
   flex: none;
-  width: 30px;
-  height: 30px;
   display: grid;
   place-items: center;
-  border: 1px solid currentColor;
-  border-radius: 9px;
+  padding: 0;
+  border: 1.5px solid currentColor;
+  border-radius: 11px;
   background: transparent;
   color: inherit;
-  opacity: .75;
+  opacity: .85;
   cursor: pointer;
-  font-size: 17px;
+  transition: background .18s, transform .18s;
 }
 
-.vm .absol-expand-btn:active {
-  transform: scale(.94);
+.absol-expand-btn:active {
+  transform: scale(.93);
 }
 
+.absol-expand-btn svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Voice message: put expand icon neatly in top-right */
+.vm {
+  position: relative;
+  padding-right: 42px !important;
+}
+
+.vm .absol-expand-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+}
+
+/* Regular shared audio file */
+.absol-audio-file {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+}
+
+.absol-audio-file .absol-audio-tools {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.absol-audio-file audio {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Expanded player card */
 .absol-audio-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 9998;
-  background: rgba(0,0,0,.58);
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  z-index: 99998;
+  background: rgba(8, 5, 18, .68);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
 }
 
-.vm.absol-audio-expanded {
+.vm.absol-audio-expanded,
+.absol-audio-file.absol-audio-expanded {
   position: fixed !important;
-  z-index: 9999 !important;
+  z-index: 99999 !important;
   left: 50% !important;
   top: 50% !important;
-  transform: translate(-50%,-50%) !important;
-  width: min(520px, calc(100vw - 32px)) !important;
-  min-width: 0 !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: translate(-50%, -50%) !important;
+  width: min(520px, calc(100vw - 36px)) !important;
   max-width: 520px !important;
-  box-sizing: border-box;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
   padding: 24px !important;
-  gap: 16px !important;
-  border: 1px solid var(--border, var(--accent)) !important;
+  gap: 18px !important;
+  border: 1.5px solid var(--accent, #9479C6) !important;
   border-radius: 24px !important;
   background: var(--surface, #211a30) !important;
   color: var(--text, #fff) !important;
-  box-shadow: 0 24px 80px rgba(0,0,0,.4) !important;
+  box-shadow: 0 24px 80px rgba(0,0,0,.45) !important;
+}
+
+.vm.absol-audio-expanded .absol-expand-btn {
+  top: 12px;
+  right: 12px;
 }
 
 .vm.absol-audio-expanded .pp {
   width: 54px;
   height: 54px;
-}
-
-.vm.absol-audio-expanded .pp .i {
-  width: 24px;
-  height: 24px;
-}
-
-.vm.absol-audio-expanded .vmid {
-  min-width: 0;
 }
 
 .vm.absol-audio-expanded .bars {
@@ -6728,10 +6774,8 @@ googleBtn.addEventListener('click', async function () {
   margin-top: 8px;
 }
 
-.vm.absol-audio-expanded .absol-expand-btn {
-  width: 36px;
-  height: 36px;
-  font-size: 20px;
+.absol-audio-file.absol-audio-expanded audio {
+  height: 54px;
 }
 
 body.absol-audio-open {
@@ -6739,87 +6783,160 @@ body.absol-audio-open {
 }
 
 @media (max-width: 480px) {
-  .vm.absol-audio-expanded {
+  .vm.absol-audio-expanded,
+  .absol-audio-file.absol-audio-expanded {
     padding: 20px !important;
-    border-radius: 21px !important;
+    border-radius: 22px !important;
   }
 }
 </style>
 
 <script>
 (function () {
-  if (window.__absolExpandableVoice) return;
-  window.__absolExpandableVoice = true;
+  'use strict';
 
-  let activePlayer = null;
+  if (window.__absolUniversalAudio) return;
+  window.__absolUniversalAudio = true;
+
+  let active = null;
   let backdrop = null;
+  let placeholder = null;
+  let originalParent = null;
+  let originalNext = null;
 
-  function closeExpanded() {
-    if (!activePlayer) return;
+  const expandIcon = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"/>
+    </svg>`;
 
-    activePlayer.classList.remove('absol-audio-expanded');
-    activePlayer = null;
+  const shrinkIcon = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 3v5H3M16 3v5h5M3 16h5v5M21 16h-5v5"/>
+    </svg>`;
 
-    if (backdrop) {
-      backdrop.remove();
-      backdrop = null;
+  function makeButton() {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'absol-expand-btn';
+    btn.innerHTML = expandIcon;
+    btn.setAttribute('aria-label', 'Expand audio player');
+    btn.title = 'Expand audio player';
+    return btn;
+  }
+
+  function restore() {
+    if (!active) return;
+
+    active.classList.remove('absol-audio-expanded');
+
+    if (placeholder && placeholder.parentNode) {
+      placeholder.parentNode.insertBefore(active, placeholder);
+      placeholder.remove();
+    } else if (originalParent) {
+      originalParent.insertBefore(active, originalNext);
     }
+
+    const btn = active.querySelector('.absol-expand-btn');
+    if (btn) {
+      btn.innerHTML = expandIcon;
+      btn.setAttribute('aria-label', 'Expand audio player');
+    }
+
+    if (backdrop) backdrop.remove();
+
+    active = null;
+    backdrop = null;
+    placeholder = null;
+    originalParent = null;
+    originalNext = null;
 
     document.body.classList.remove('absol-audio-open');
   }
 
-  function expandPlayer(player) {
-    if (activePlayer === player) {
-      closeExpanded();
+  function expand(element) {
+    if (active === element) {
+      restore();
       return;
     }
 
-    closeExpanded();
+    if (active) restore();
 
-    activePlayer = player;
+    active = element;
+    originalParent = element.parentNode;
+    originalNext = element.nextSibling;
+
+    placeholder = document.createComment('Absol audio position');
+    originalParent.insertBefore(placeholder, element);
 
     backdrop = document.createElement('div');
     backdrop.className = 'absol-audio-backdrop';
-    backdrop.addEventListener('click', closeExpanded);
+    backdrop.addEventListener('click', restore);
 
     document.body.appendChild(backdrop);
+    document.body.appendChild(element);
 
-    player.classList.add('absol-audio-expanded');
+    element.classList.add('absol-audio-expanded');
     document.body.classList.add('absol-audio-open');
+
+    const btn = element.querySelector('.absol-expand-btn');
+    if (btn) {
+      btn.innerHTML = shrinkIcon;
+      btn.setAttribute('aria-label', 'Minimise audio player');
+    }
   }
 
-  function enhance(player) {
-    if (player.dataset.expandReady) return;
+  function enhanceVoice(player) {
+    if (player.dataset.universalExpand) return;
 
-    player.dataset.expandReady = '1';
-
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'absol-expand-btn';
-    button.textContent = '⛶';
-    button.setAttribute('aria-label', 'Expand voice player');
-    button.title = 'Expand voice player';
+    const button = makeButton();
+    player.appendChild(button);
+    player.dataset.universalExpand = '1';
 
     button.addEventListener('click', event => {
+      event.preventDefault();
       event.stopPropagation();
-      expandPlayer(player);
-
-      const expanded = player.classList.contains(
-        'absol-audio-expanded'
-      );
-
-      button.textContent = expanded ? '×' : '⛶';
-      button.setAttribute(
-        'aria-label',
-        expanded ? 'Close expanded player' : 'Expand voice player'
-      );
+      expand(player);
     });
+  }
 
-    player.appendChild(button);
+  function enhanceAudio(audio) {
+    if (audio.dataset.universalExpand) return;
+
+    // Avoid wrapping audio elements already inside our wrapper.
+    if (audio.closest('.absol-audio-file')) return;
+
+    const parent = audio.parentNode;
+    if (!parent) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'absol-audio-file';
+
+    const tools = document.createElement('div');
+    tools.className = 'absol-audio-tools';
+
+    const button = makeButton();
+    tools.appendChild(button);
+
+    parent.insertBefore(wrapper, audio);
+    wrapper.appendChild(tools);
+    wrapper.appendChild(audio);
+
+    audio.dataset.universalExpand = '1';
+    audio.style.width = '100%';
+
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      expand(wrapper);
+    });
   }
 
   function scan() {
-    document.querySelectorAll('.vm').forEach(enhance);
+    // Recorded voice messages.
+    document.querySelectorAll('.vm').forEach(enhanceVoice);
+
+    // Ordinary audio attachments after they are opened.
+    document.querySelectorAll('audio').forEach(enhanceAudio);
   }
 
   const observer = new MutationObserver(scan);
@@ -6832,21 +6949,12 @@ body.absol-audio-open {
   scan();
 
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && activePlayer) {
-      const player = activePlayer;
-      closeExpanded();
-
-      const button = player.querySelector('.absol-expand-btn');
-      if (button) {
-        button.textContent = '⛶';
-        button.setAttribute('aria-label', 'Expand voice player');
-      }
-    }
+    if (event.key === 'Escape' && active) restore();
   });
 
 })();
 </script>
-<!-- ===== END ABSOL EXPANDABLE VOICE PLAYER ===== -->
+<!-- ===== END ABSOL UNIVERSAL AUDIO EXPANSION ===== -->
 
 </body>
 </html>
