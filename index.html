@@ -8206,5 +8206,23 @@ body.absol-audio-open {
 })();
 </script>
 <!-- ===== END ABSOL FIX ===== -->
+  <!-- ===== ABSOL FIX: favorite star only highlights when active ===== -->
+<style>
+#menu #mFav .i{fill:none;stroke:currentColor;color:inherit}
+#menu #mFav.on .i{fill:var(--accent);stroke:var(--accent);color:var(--accent)}
+</style>
+<script>
+(function(){
+  const fav = document.getElementById('mFav');
+  if (!fav) return;
+  const prev = menuMode;
+  menuMode = function(){
+    prev();
+    const on = curGroup ? !!(gset[curGroup] || {}).favorite : !!st(current).favorite;
+    fav.classList.toggle('on', on);
+  };
+})();
+</script>
+<!-- ===== END ABSOL FIX ===== -->
 </body>
 </html>
