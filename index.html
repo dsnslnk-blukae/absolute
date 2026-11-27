@@ -6956,688 +6956,386 @@ body.absol-audio-open {
 </script>
 <!-- ===== END ABSOL UNIVERSAL AUDIO EXPANSION ===== -->
 
-<!-- =========================================================
- ABSOL UI ENHANCEMENTS — ADD AT THE VERY END OF index.html
- Swipe reply · New-message divider · Manual unread
- Chat-list typing · Typing heartbeat
- Copy feedback is already implemented in the existing app.
-========================================================= -->
+<!-- ======================================================
+ ABSOL — MULTI-SELECT CONVERSATION TOOLBAR
+ Paste at the end of index.html, before </body>
+ Requires the previous ABSOL UI ENHANCEMENTS patch removed.
+====================================================== -->
 
 <style>
-/* ---------- Typing heartbeat ---------- */
-.ab-typing{
-  display:inline-flex;
+#absSelectHead{
+  display:none;
   align-items:center;
-  gap:7px;
-  color:#a0a0aa;
-  font-size:12px;
-  font-weight:600;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 16px;
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
 }
-.ab-heart{
-  width:7px;
-  height:7px;
+#absSelectHead.on{display:flex}
+#absSelectHead .abs-count{
+  font-weight:700;
+  font-size:14px;
+}
+#absSelectHead button{
+  padding:7px 12px;
+  border-radius:12px;
+  background:var(--surface2);
+  color:var(--accent2);
+  font-size:13px;
+}
+.convo.abs-picked{
+  outline:2px solid var(--accent);
+  background:color-mix(in srgb,var(--accent) 13%,var(--surface));
+}
+.convo.abs-picked:after{
+  content:"✓";
+  display:grid;
+  place-items:center;
+  width:23px;
+  height:23px;
   flex:none;
   border-radius:50%;
-  background:#a0a0aa;
-  box-shadow:0 0 0 0 rgba(160,160,170,.35);
-  animation:abHeartbeat 1.25s ease-in-out infinite;
+  background:var(--accent);
+  color:var(--accent-text);
+  font-size:13px;
+  font-weight:800;
 }
-@keyframes abHeartbeat{
-  0%,100%{transform:scale(.85);opacity:.55}
-  35%{transform:scale(1.25);opacity:1;box-shadow:0 0 0 4px rgba(160,160,170,.12)}
-  55%{transform:scale(.95);opacity:.8}
-  75%{transform:scale(1.15);opacity:1}
+#absActionDock{
+  position:fixed;
+  z-index:60;
+  left:0;
+  right:0;
+  bottom:0;
+  padding:10px 12px calc(12px + env(safe-area-inset-bottom,0px));
+  background:color-mix(in srgb,var(--surface) 94%,transparent);
+  border-top:1px solid var(--border);
+  backdrop-filter:blur(18px);
+  display:none;
 }
-
-/* ---------- New messages divider ---------- */
-.ab-new-divider{
+#absActionDock.on{display:block}
+#absActionStrip{
   display:flex;
+  gap:9px;
+  overflow-x:auto;
+  overflow-y:hidden;
+  scroll-snap-type:x mandatory;
+  scrollbar-width:none;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-x:contain;
+}
+#absActionStrip::-webkit-scrollbar{display:none}
+.abs-action{
+  flex:0 0 calc((100% - 27px)/4);
+  min-width:0;
+  height:70px;
+  padding:8px 3px;
+  display:flex;
+  flex-direction:column;
   align-items:center;
-  gap:10px;
-  margin:14px 12px;
-  color:var(--muted);
-  font-size:11px;
-  font-weight:700;
-  letter-spacing:.35px;
-  text-transform:uppercase;
-}
-.ab-new-divider:before,
-.ab-new-divider:after{
-  content:"";
-  height:1px;
-  flex:1;
-  background:var(--border);
-}
-.ab-new-divider span{
-  white-space:nowrap;
-}
-
-/* ---------- Manual unread control ---------- */
-.ab-unread-action{
-  flex:none;
+  justify-content:center;
+  gap:5px;
   border:1px solid var(--border);
-  border-radius:9px;
-  padding:5px 8px;
-  margin-left:6px;
+  border-radius:17px;
   background:var(--surface2);
-  color:var(--muted);
+  color:var(--text);
+  scroll-snap-align:start;
+  white-space:nowrap;
+  overflow:hidden;
+  box-shadow:none;
+}
+.abs-action:active{transform:scale(.97)}
+.abs-action .abs-ico{
+  font-size:19px;
+  line-height:1;
+  height:22px;
+  display:grid;
+  place-items:center;
+}
+.abs-action .abs-label{
+  display:block;
+  width:100%;
+  overflow:hidden;
+  text-overflow:clip;
+  white-space:nowrap;
+  text-align:center;
   font-size:11px;
   line-height:1.2;
-}
-.ab-unread-action:active{transform:scale(.96)}
-.convo.ab-manual-unread .tx span{
-  color:var(--text);
   font-weight:700;
 }
-.convo.ab-manual-unread{
-  background:rgba(160,160,170,.055);
+.abs-action.danger{color:var(--danger)}
+.abs-action.primary{
+  background:color-mix(in srgb,var(--accent) 17%,var(--surface2));
+  border-color:color-mix(in srgb,var(--accent) 45%,var(--border));
 }
-
-/* ---------- Swipe reply feedback ---------- */
-#msgs .b.ab-swiping{
-  transition:transform .12s ease;
+.abs-action.more{
+  border-style:dashed;
+  color:var(--accent2);
 }
-#msgs .b.ab-reply-ready{
-  outline:1px solid var(--accent);
-  outline-offset:2px;
+#absActionHint{
+  text-align:center;
+  color:var(--muted);
+  font-size:10px;
+  padding-top:7px;
 }
 </style>
 
 <script>
 (function(){
-  'use strict';
+  if(window.__absolMultiSelect) return;
+  window.__absolMultiSelect = true;
 
-  if (window.__absolEnhancementsLoaded) return;
-  window.__absolEnhancementsLoaded = true;
+  const list = document.getElementById('convos');
+  if(!list) return;
 
-  const P2 = window.P2;
-  const $ = id => document.getElementById(id);
-  const box = $('msgs');
+  let selected = new Map();
+  let longPressTimer = null;
+  let startX = 0, startY = 0, longPressed = false;
+  let lastLongPress = 0;
 
-  if (!P2 || !box) {
-    console.warn('[Absol enhancements] Existing message system not found.');
-    return;
+  const head = document.createElement('div');
+  head.id = 'absSelectHead';
+  head.innerHTML =
+    '<span class="abs-count">0 selected</span>' +
+    '<div style="display:flex;gap:7px">' +
+      '<button type="button" data-abs="all">Select all</button>' +
+      '<button type="button" data-abs="close">Cancel</button>' +
+    '</div>';
+
+  const dock = document.createElement('div');
+  dock.id = 'absActionDock';
+  dock.innerHTML =
+    '<div id="absActionStrip">' +
+      '<button class="abs-action primary" data-action="remind"><span class="abs-ico">◷</span><span class="abs-label">Remind</span></button>' +
+      '<button class="abs-action danger" data-action="delete"><span class="abs-ico">⌫</span><span class="abs-label">Delete</span></button>' +
+      '<button class="abs-action" data-action="pin"><span class="abs-ico">⌖</span><span class="abs-label">Pin</span></button>' +
+      '<button class="abs-action more" data-action="more"><span class="abs-ico">•••</span><span class="abs-label">More</span></button>' +
+      '<button class="abs-action" data-action="mute"><span class="abs-ico">♩</span><span class="abs-label">Mute</span></button>' +
+      '<button class="abs-action" data-action="read"><span class="abs-ico">✓✓</span><span class="abs-label">Mark read</span></button>' +
+      '<button class="abs-action" data-action="favourite"><span class="abs-ico">☆</span><span class="abs-label">Favourite</span></button>' +
+      '<button class="abs-action" data-action="group"><span class="abs-ico">♧</span><span class="abs-label">Add to group</span></button>' +
+    '</div>' +
+    '<div id="absActionHint">Swipe left to see more actions</div>';
+
+  list.parentElement.insertBefore(head,list);
+  document.body.appendChild(dock);
+
+  function getRows(){
+    return [...list.querySelectorAll(':scope > .convo')];
   }
 
-  let activeUid = null;
-  let typingChannel = null;
-  let lastTypingSent = 0;
-  let swipe = null;
-
-  const typingUsers = Object.create(null);
-  const manualUnread = new Set();
-
-  const uid = () => me && me.id ? me.id : null;
-  const key = name => 'absol-ui:' + uid() + ':' + name;
-
-  function readStore(name, fallback){
-    try {
-      const value = localStorage.getItem(key(name));
-      return value ? JSON.parse(value) : fallback;
-    } catch {
-      return fallback;
-    }
-  }
-
-  function writeStore(name, value){
-    try {
-      localStorage.setItem(key(name), JSON.stringify(value));
-    } catch(e) {
-      console.warn('[Absol enhancements] Local storage unavailable:', e);
-    }
-  }
-
-  function timestamp(m){
-    return m && m.created_at ? new Date(m.created_at).getTime() : 0;
-  }
-
-  function chatKey(){
-    return curGroup ? 'group:' + curGroup : 'dm:' + current;
-  }
-
-  function getMessages(){
-    return curGroup
-      ? gmsgs.filter(m => m.group_id === curGroup && gvisible(m))
-      : msgs.filter(m => otherId(m) === current && visible(m));
-  }
-
-  function incomingMessages(){
-    return getMessages()
-      .filter(m => m.sender_id !== me.id && !m.pending)
-      .sort((a,b) => timestamp(a) - timestamp(b));
-  }
-
-  function latestIncomingTime(){
-    const list = incomingMessages();
-    return list.length ? timestamp(list[list.length - 1]) : 0;
-  }
-
-  /* ---------- 1. New-message divider ---------- */
-
-  function drawNewDivider(){
-    if ($('chat').hidden) return;
-
-    const k = chatKey();
-    const list = incomingMessages();
-    if (!list.length) return;
-
-    const watermarks = readStore('read-watermarks', {});
-    const watermark = Number(watermarks[k] || 0);
-
-    const firstUnread = list.find(m => timestamp(m) > watermark);
-    if (!firstUnread) return;
-
-    const bubble = box.querySelector(
-      '.b.them[data-mid="' + CSS.escape(String(firstUnread.id)) + '"]'
-    );
-
-    if (!bubble) return;
-
-    const divider = document.createElement('div');
-    divider.className = 'ab-new-divider';
-    divider.dataset.abDivider = '1';
-
-    const label = document.createElement('span');
-    label.textContent = 'New messages';
-    divider.appendChild(label);
-
-    bubble.before(divider);
-  }
-
-  function saveCurrentWatermark(){
-    if (!uid() || !current && !curGroup) return;
-
-    const k = chatKey();
-    const watermarks = readStore('read-watermarks', {});
-    watermarks[k] = latestIncomingTime();
-    writeStore('read-watermarks', watermarks);
-  }
-
-  /* On first use, establish a baseline so old messages are not
-     incorrectly labelled as new. */
-  function initialiseWatermarks(){
-    const watermarks = readStore('read-watermarks', {});
-    let changed = false;
-
-    Object.keys(profiles || {}).forEach(id => {
-      const k = 'dm:' + id;
-      if (!(k in watermarks)) {
-        const list = msgs.filter(m =>
-          otherId(m) === id && m.sender_id !== me.id && !m.pending
-        );
-        watermarks[k] = list.reduce((n,m) => Math.max(n,timestamp(m)),0);
-        changed = true;
-      }
-    });
-
-    Object.keys(groups || {}).forEach(id => {
-      const k = 'group:' + id;
-      if (!(k in watermarks)) {
-        const list = gmsgs.filter(m =>
-          m.group_id === id && m.sender_id !== me.id && !m.pending
-        );
-        watermarks[k] = list.reduce((n,m) => Math.max(n,timestamp(m)),0);
-        changed = true;
-      }
-    });
-
-    if (changed) writeStore('read-watermarks', watermarks);
-  }
-
-  const originalRenderMessages = renderMsgs;
-  renderMsgs = function(){
-    originalRenderMessages();
-
-    try {
-      box.querySelectorAll('[data-ab-divider]').forEach(x => x.remove());
-      drawNewDivider();
-
-      /* Messages received while the chat is already open are
-         considered viewed, matching the app's existing read flow. */
-      if (!document.hidden && !$('chat').hidden) {
-        saveCurrentWatermark();
-      }
-    } catch(e) {
-      console.warn('[Absol divider]', e);
-    }
-  };
-
-  const originalOpenChat = openChat;
-  openChat = async function(id){
-    const result = await originalOpenChat(id);
-
-    if (uid() && current === id && !curGroup) {
-      const watermarks = readStore('read-watermarks', {});
-      const k = 'dm:' + id;
-
-      if (!(k in watermarks)) {
-        const list = msgs.filter(m =>
-          otherId(m) === id && m.sender_id !== me.id && !m.pending
-        );
-        watermarks[k] = list.reduce((n,m) => Math.max(n,timestamp(m)),0);
-        writeStore('read-watermarks', watermarks);
-      }
-
-      box.querySelectorAll('[data-ab-divider]').forEach(x => x.remove());
-      drawNewDivider();
-      saveCurrentWatermark();
-    }
-
-    return result;
-  };
-
-  const originalOpenGroup = openGroup;
-  openGroup = function(id){
-    originalOpenGroup(id);
-
-    if (uid() && curGroup === id) {
-      const watermarks = readStore('read-watermarks', {});
-      const k = 'group:' + id;
-
-      if (!(k in watermarks)) {
-        const list = gmsgs.filter(m =>
-          m.group_id === id && m.sender_id !== me.id && !m.pending
-        );
-        watermarks[k] = list.reduce((n,m) => Math.max(n,timestamp(m)),0);
-        writeStore('read-watermarks', watermarks);
-      }
-
-      box.querySelectorAll('[data-ab-divider]').forEach(x => x.remove());
-      drawNewDivider();
-      saveCurrentWatermark();
-    }
-  };
-
-  /* ---------- 2. Manual mark unread ---------- */
-
-  function loadManualUnread(){
-    manualUnread.clear();
-    const stored = readStore('manual-unread', []);
-    if (Array.isArray(stored)) stored.forEach(x => manualUnread.add(x));
-  }
-
-  function saveManualUnread(){
-    writeStore('manual-unread', [...manualUnread]);
-  }
-
-  function markUnread(kind, id){
-    const k = kind + ':' + id;
-
-    if (manualUnread.has(k)) {
-      manualUnread.delete(k);
-      toast('Marked as read');
-    } else {
-      manualUnread.add(k);
-      toast('Marked as unread');
-    }
-
-    saveManualUnread();
-    renderList();
-  }
-
-  function decorateManualUnread(){
-    if (!uid()) return;
-
-    const rows = [...$('convos').querySelectorAll(':scope > .convo')];
+  function describeRows(){
     const last = {}, items = [];
 
-    msgs.filter(visible).forEach(m => {
-      last[otherId(m)] = m;
+    msgs.filter(visible).forEach(m => last[otherId(m)] = m);
+
+    Object.keys(last).forEach(id => items.push({
+      key:'dm:'+id, kind:'dm', id
+    }));
+
+    Object.keys(groups).forEach(id => items.push({
+      key:'group:'+id, kind:'group', id
+    }));
+
+    items.sort((a,b) => {
+      const favA = a.kind==='dm' ? (st(a.id).favorite?1:0) : ((gset[a.id]||{}).favorite?1:0);
+      const favB = b.kind==='dm' ? (st(b.id).favorite?1:0) : ((gset[b.id]||{}).favorite?1:0);
+      if(favA!==favB) return favB-favA;
+
+      const time = x => {
+        const m = x.kind==='dm'
+          ? last[x.id]
+          : lastGroupMsg(x.id);
+        return m ? +new Date(m.created_at) : 0;
+      };
+      return time(b)-time(a);
     });
 
-    Object.keys(last).forEach(id => {
-      items.push({
-        kind:'dm',
-        id,
-        t:timestamp(last[id]),
-        fav:st(id).favorite ? 1 : 0
-      });
-    });
-
-    Object.keys(groups).forEach(id => {
-      const m = lastGroupMsg(id);
-      items.push({
-        kind:'group',
-        id,
-        t:timestamp(m) || timestamp(groups[id]),
-        fav:(gset[id] || {}).favorite ? 1 : 0
-      });
-    });
-
-    items.sort((a,b) => (b.fav-a.fav) || (b.t-a.t));
-
-    if (rows.length !== items.length) return;
-
-    rows.forEach((row,index) => {
-      const item = items[index];
-      const k = item.kind + ':' + item.id;
-      const unread = manualUnread.has(k);
-
-      row.classList.toggle('ab-manual-unread', unread);
-
-      let action = row.querySelector('.ab-unread-action');
-      if (!action) {
-        action = document.createElement('button');
-        action.type = 'button';
-        action.className = 'ab-unread-action';
-        action.addEventListener('click', e => {
-          e.preventDefault();
-          e.stopPropagation();
-          markUnread(item.kind, item.id);
-        });
-        row.appendChild(action);
-      }
-
-      action.textContent = unread ? 'Mark read' : 'Mark unread';
-      action.setAttribute('aria-label', unread ? 'Mark chat as read' : 'Mark chat as unread');
-    });
+    return items;
   }
 
-  const originalRenderList = renderList;
-  renderList = function(){
+  function update(){
+    const rows = getRows();
+    const items = describeRows();
+
+    rows.forEach((row,i) => {
+      const item = items[i];
+      if(!item) return;
+      row.classList.toggle('abs-picked',selected.has(item.key));
+    });
+
+    const count = selected.size;
+    head.classList.toggle('on',count>0);
+    dock.classList.toggle('on',count>0);
+    head.querySelector('.abs-count').textContent = count + ' selected';
+
+    const all = head.querySelector('[data-abs="all"]');
+    all.textContent = count===items.length ? 'Deselect all' : 'Select all';
+  }
+
+  function enter(item){
+    if(!selected.size) selected.set(item.key,item);
+    update();
+    if(navigator.vibrate) navigator.vibrate(15);
+  }
+
+  function toggle(item){
+    if(selected.has(item.key)) selected.delete(item.key);
+    else selected.set(item.key,item);
+
+    if(!selected.size){
+      update();
+      return;
+    }
+    update();
+  }
+
+  function exit(){
+    selected.clear();
+    update();
+    document.getElementById('absActionStrip').scrollLeft=0;
+  }
+
+  function itemForRow(row,index){
+    return describeRows()[index] || null;
+  }
+
+  function findRowItem(row){
+    const index=getRows().indexOf(row);
+    return itemForRow(row,index);
+  }
+
+  /* Long press enters selection mode. */
+  list.addEventListener('touchstart',e=>{
+    const row=e.target.closest('.convo');
+    if(!row) return;
+
+    const touch=e.touches[0];
+    startX=touch.clientX;
+    startY=touch.clientY;
+    longPressed=false;
+    clearTimeout(longPressTimer);
+
+    const item=findRowItem(row);
+    if(!item) return;
+
+    longPressTimer=setTimeout(()=>{
+      longPressed=true;
+      lastLongPress=Date.now();
+      if(!selected.size) enter(item);
+      else toggle(item);
+    },480);
+  },{passive:true});
+
+  list.addEventListener('touchmove',e=>{
+    if(!longPressTimer) return;
+    const t=e.touches[0];
+    if(Math.abs(t.clientX-startX)>10 || Math.abs(t.clientY-startY)>10){
+      clearTimeout(longPressTimer);
+      longPressTimer=null;
+    }
+  },{passive:true});
+
+  ['touchend','touchcancel'].forEach(name=>{
+    list.addEventListener(name,()=>{
+      clearTimeout(longPressTimer);
+      longPressTimer=null;
+    },{passive:true});
+  });
+
+  list.addEventListener('contextmenu',e=>{
+    const row=e.target.closest('.convo');
+    if(!row) return;
+    e.preventDefault();
+
+    if(Date.now()-lastLongPress<700) return;
+
+    const item=findRowItem(row);
+    if(!item) return;
+
+    if(!selected.size) enter(item);
+    else toggle(item);
+    lastLongPress=Date.now();
+  });
+
+  /* Tap additional rows while selection mode is active. */
+  list.addEventListener('click',e=>{
+    const row=e.target.closest('.convo');
+    if(!row || !selected.size) return;
+
+    if(Date.now()-lastLongPress<700){
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      return;
+    }
+
+    const item=findRowItem(row);
+    if(!item) return;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    toggle(item);
+  },true);
+
+  head.addEventListener('click',e=>{
+    const action=e.target.closest('[data-abs]');
+    if(!action) return;
+
+    if(action.dataset.abs==='close') return exit();
+
+    const items=describeRows();
+    if(selected.size===items.length) selected.clear();
+    else {
+      selected.clear();
+      items.forEach(item=>selected.set(item.key,item));
+    }
+    update();
+  });
+
+  /* The strip is horizontally scrollable. The first four cards
+     are visible initially; the remaining cards are revealed by swiping. */
+  dock.addEventListener('click',e=>{
+    const button=e.target.closest('[data-action]');
+    if(!button) return;
+
+    const action=button.dataset.action;
+
+    if(action==='more'){
+      const strip=document.getElementById('absActionStrip');
+      strip.scrollBy({left:strip.clientWidth,behavior:'smooth'});
+      return;
+    }
+
+    if(action==='remind'){
+      toast('Reminder scheduling will be added next.');
+      return;
+    }
+
+    if(action==='delete'){
+      toast('Delete action will be connected after its safe deletion behaviour is confirmed.');
+      return;
+    }
+
+    if(action==='pin'){
+      toast('Pin action will be connected to the existing chat settings next.');
+      return;
+    }
+
+    if(action==='mute'||action==='read'||action==='favourite'||action==='group'){
+      toast('Additional action will be connected in the next stage.');
+    }
+  });
+
+  const originalRenderList=renderList;
+  renderList=function(){
     originalRenderList();
-
-    try {
-      decorateManualUnread();
-      decorateTypingRows();
-    } catch(e) {
-      console.warn('[Absol chat list]', e);
-    }
+    if(selected.size) update();
   };
 
-  /* Opening a manually unread conversation clears its local flag. */
-  function clearManualUnread(kind,id){
-    if (!id) return;
-    manualUnread.delete(kind + ':' + id);
-    saveManualUnread();
-  }
-
-  const openChatBeforeUnread = openChat;
-  openChat = async function(id){
-    clearManualUnread('dm',id);
-    return openChatBeforeUnread(id);
-  };
-
-  const openGroupBeforeUnread = openGroup;
-  openGroup = function(id){
-    clearManualUnread('group',id);
-    return openGroupBeforeUnread(id);
-  };
-
-  /* ---------- 3. Swipe to reply ---------- */
-
-  function replyToBubble(bubble){
-    if (!bubble || !bubble.dataset.mid) return;
-
-    const group = !!curGroup;
-    const message = (group ? gmsgs : msgs).find(
-      m => String(m.id) === String(bubble.dataset.mid)
-    );
-
-    if (!message || message.pending) return;
-
-    const text = group ? decryptG(message) : decrypt(message);
-    const action = P2.menu.find(item =>
-      String(item.label).toLowerCase().includes('reply')
-    );
-
-    if (!action || !action.show({
-      kind:group ? 'group' : 'dm',
-      m:message,
-      t:text,
-      gone:P2.isGone(message),
-      mine:message.sender_id === me.id
-    })) return;
-
-    action.run({
-      kind:group ? 'group' : 'dm',
-      m:message,
-      t:text,
-      gone:P2.isGone(message),
-      mine:message.sender_id === me.id
-    });
-
-    bubble.classList.add('ab-reply-ready');
-    setTimeout(() => bubble.classList.remove('ab-reply-ready'), 500);
-  }
-
-  box.addEventListener('touchstart', e => {
-    const bubble = e.target.closest('.b[data-mid]');
-    if (!bubble || e.touches.length !== 1) return;
-
-    const touch = e.touches[0];
-    swipe = {
-      bubble,
-      x:touch.clientX,
-      y:touch.clientY,
-      moved:false
-    };
-  }, {passive:true});
-
-  box.addEventListener('touchmove', e => {
-    if (!swipe || e.touches.length !== 1) return;
-
-    const touch = e.touches[0];
-    const dx = touch.clientX - swipe.x;
-    const dy = touch.clientY - swipe.y;
-
-    if (Math.abs(dx) > 12 || Math.abs(dy) > 12) swipe.moved = true;
-
-    /* Reply gesture: swipe right, with limited vertical movement. */
-    if (dx > 12 && Math.abs(dy) < 45) {
-      swipe.bubble.classList.add('ab-swiping');
-      swipe.bubble.style.transform = 'translateX(' + Math.min(dx * .35, 48) + 'px)';
-    }
-  }, {passive:true});
-
-  function finishSwipe(){
-    if (!swipe) return;
-
-    const bubble = swipe.bubble;
-    const dx = bubble.getBoundingClientRect().left - swipe.x;
-    const moved = swipe.moved;
-
-    bubble.style.transform = '';
-    bubble.classList.remove('ab-swiping');
-
-    /* Use the tracked finger movement rather than the final
-       element position to decide whether the gesture qualifies. */
-    if (moved && swipe.lastDx >= 75) replyToBubble(bubble);
-    swipe = null;
-  }
-
-  box.addEventListener('touchend', e => {
-    if (!swipe) return;
-
-    const touch = e.changedTouches[0];
-    swipe.lastDx = touch.clientX - swipe.x;
-    finishSwipe();
-  }, {passive:true});
-
-  box.addEventListener('touchcancel', () => {
-    if (swipe) {
-      swipe.bubble.style.transform = '';
-      swipe.bubble.classList.remove('ab-swiping');
-    }
-    swipe = null;
-  }, {passive:true});
-
-  /* ---------- 4. Typing heartbeat and chat-list preview ---------- */
-
-  function isTyping(id){
-    return !!id && Date.now() - (typingUsers[id] || 0) < 3500;
-  }
-
-  function heartbeat(){
-    const wrap = document.createElement('span');
-    wrap.className = 'ab-typing';
-
-    const dot = document.createElement('i');
-    dot.className = 'ab-heart';
-
-    const label = document.createElement('span');
-    label.textContent = 'typing';
-
-    wrap.append(dot,label);
-    return wrap;
-  }
-
-  function decorateHeader(){
-    const sub = $('chatSub');
-    if (!sub || !current || curGroup) return;
-
-    if (isTyping(current)) {
-      sub.replaceChildren(heartbeat());
-      sub.classList.add('typ');
-    } else {
-      sub.classList.remove('typ');
-    }
-  }
-
-  const originalChatChrome = chatChrome;
-  chatChrome = function(){
-    originalChatChrome();
-    decorateHeader();
-  };
-
-  function decorateTypingRows(){
-    if (!uid()) return;
-
-    const rows = [...$('convos').querySelectorAll(':scope > .convo')];
-    const last = {}, items = [];
-
-    msgs.filter(visible).forEach(m => {
-      last[otherId(m)] = m;
-    });
-
-    Object.keys(last).forEach(id => {
-      items.push({kind:'dm',id,t:timestamp(last[id]),fav:st(id).favorite?1:0});
-    });
-
-    Object.keys(groups).forEach(id => {
-      const m = lastGroupMsg(id);
-      items.push({kind:'group',id,t:timestamp(m)||timestamp(groups[id]),fav:(gset[id]||{}).favorite?1:0});
-    });
-
-    items.sort((a,b) => (b.fav-a.fav) || (b.t-a.t));
-
-    if (rows.length !== items.length) return;
-
-    rows.forEach((row,index) => {
-      const item = items[index];
-      if (item.kind !== 'dm') return;
-
-      const preview = row.querySelector('.tx span');
-      if (!preview) return;
-
-      if (isTyping(item.id)) {
-        preview.replaceChildren(heartbeat());
-      } else if (preview.querySelector('.ab-typing')) {
-        /* Restore the normal preview on the next list render. */
-        const m = last[item.id];
-        if (m) {
-          preview.textContent =
-            (m.sender_id === me.id ? 'You: ' : '') +
-            (decrypt(m) ?? '🔒 Can’t decrypt') +
-            ' · ' + fmtTime(m.created_at);
-        }
-      }
-    });
-  }
-
-  function startTypingChannel(){
-    if (!uid() || !sb) return;
-
-    if (typingChannel) sb.removeChannel(typingChannel);
-
-    typingChannel = sb.channel('absol-typing-ui', {
-      config:{broadcast:{self:false}}
-    });
-
-    typingChannel
-      .on('broadcast',{event:'typing'},({payload}) => {
-        if (!uid() || !payload || payload.to !== me.id || !payload.from) return;
-
-        typingUsers[payload.from] = Date.now();
-
-        if (current === payload.from && !curGroup && !$('chat').hidden) {
-          decorateHeader();
-        }
-
-        decorateTypingRows();
-      })
-      .subscribe();
-  }
-
-  $('msgInput').addEventListener('input', () => {
-    if (!uid() || !typingChannel || !current || curGroup) return;
-    if (!$('msgInput').value.trim() || st(current).blocked) return;
-
-    const now = Date.now();
-    if (now - lastTypingSent < 2500) return;
-
-    lastTypingSent = now;
-
-    typingChannel.send({
-      type:'broadcast',
-      event:'typing',
-      payload:{from:me.id,to:current}
-    });
-  });
-
-  /* Expire typing state and refresh the visible indicators. */
-  const refreshTimer = setInterval(() => {
-    if (!uid()) return;
-
-    let changed = false;
-
-    Object.keys(typingUsers).forEach(id => {
-      if (!isTyping(id)) {
-        delete typingUsers[id];
-        changed = true;
-      }
-    });
-
-    if (changed) {
-      if (current && !curGroup && !$('chat').hidden) decorateHeader();
-      decorateTypingRows();
-    }
-  }, 900);
-
-  /* ---------- Account lifecycle ---------- */
-
-  const lifecycleTimer = setInterval(() => {
-    const id = uid();
-
-    if (id && id !== activeUid) {
-      activeUid = id;
-      loadManualUnread();
-      initialiseWatermarks();
-      startTypingChannel();
-      renderList();
-    } else if (!id && activeUid) {
-      activeUid = null;
-      manualUnread.clear();
-      Object.keys(typingUsers).forEach(k => delete typingUsers[k]);
-
-      if (typingChannel) {
-        sb.removeChannel(typingChannel);
-        typingChannel = null;
-      }
-    }
-  }, 1000);
-
-  window.addEventListener('beforeunload', () => {
-    clearInterval(refreshTimer);
-    clearInterval(lifecycleTimer);
-    if (typingChannel && sb) sb.removeChannel(typingChannel);
-  });
-
-  console.log('[Absol enhancements] Loaded.');
+  console.log('[Absol] Multi-select toolbar loaded.');
 })();
 </script>
-
-<!-- ================= END ABSOL UI ENHANCEMENTS ================= -->
+<!-- ============== END ABSOL MULTI-SELECT TOOLBAR ============== -->
 
 </body>
 </html>
