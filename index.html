@@ -8224,131 +8224,131 @@ body.absol-audio-open {
 })();
 </script>
 <!-- ===== END ABSOL FIX ===== -->
-  <!-- ===== ABSOL FIX 3: Drive restore with a visible reason ===== -->
-<style>
-#driveDlg input{display:none}
-#rsDlg:not(.pp) #rsPass,
-#rsDlg:not(.pp) #rsPass ~ p.hint,
-#rsDlg:not(.pp) #rsFile,
-#rsDlg:not(.pp) #rsText,
-#rsDlg:not(.pp) #rsGoRow{display:none}
-</style>
+<!-- ===== ABSOL FIX 5: automatic Drive backup + restore, no passphrase ===== -->
+<style>#driveDlg input{display:none}</style>
 <script>
 (function(){
-  const OP = 'absol-drive-op', ERR = 'absol-drive-err', PK = 'absol-drive-pending';
   const API = 'https://www.googleapis.com', SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
-  const origAsk = askRestore, dlg = document.getElementById('rsDlg');
-  const note = t => { try { sessionStorage.setItem(ERR, String(t)); } catch {} };
+  const PK = 'absol-drive-pending', fname = uid => 'absol-key-' + uid + '.json';
+  const pend = () => Date.now() - (+localStorage.getItem(PK) || 0) < 180000;
+  const setPend = () => localStorage.setItem(PK, String(Date.now()));
+  const clrPend = () => localStorage.removeItem(PK);
 
-  /* remember Drive-related messages, and replace the old passphrase prompt with a clear message */
-  const _toast = toast;
-  toast = function(t){ if (/drive|google|backup|key/i.test(String(t))) note(t); return _toast.apply(this, arguments); };
-  const _prompt = window.prompt;
-  window.prompt = function(m){
-    if (/passphrase you set for this backup/i.test(String(m))){
-      note('Your Drive backup was made with a passphrase. On a device that has your key, open Settings, Account and security, Update your backup, to replace it with one that needs no passphrase.');
-      return null;
-    }
-    return _prompt.apply(window, arguments);
+  /* 1) every Google login also asks for Drive access */
+  const oauth = sb.auth.signInWithOAuth.bind(sb.auth);
+  sb.auth.signInWithOAuth = c => {
+    if (c && c.provider === 'google') c = { ...c, options: { ...(c.options || {}), scopes: (c.options && c.options.scopes) || SCOPE } };
+    return oauth(c);
   };
 
-  /* dialog layout: Drive first, passphrase hidden until asked for */
-  const goRow = $('rsGo').closest('.row'); goRow.id = 'rsGoRow';
-  const dBtn = [...dlg.querySelectorAll('button')].find(b => /Google Drive/.test(b.textContent));
-  const dRow = dBtn && dBtn.closest('.row');
-  const tog = el('button', { className: 'ghost', textContent: 'Use a passphrase instead', onclick: () => {
-    dlg.classList.toggle('pp'); tog.textContent = dlg.classList.contains('pp') ? 'Hide passphrase' : 'Use a passphrase instead';
-  } });
-  dlg.querySelector('p.hint').textContent = 'This device doesn’t have your encryption key yet. Restore it from Google Drive, or use your passphrase.';
-  if (dRow){
-    dBtn.classList.remove('ghost'); dBtn.removeAttribute('style');
-    dlg.querySelector('p.hint').after(dRow);
-    dRow.after(el('div', { className: 'row', style: 'margin-top:8px' }, tog));
+  /* Drive helpers */
+  async function dget(url, tok){
+    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + tok } });
+    if (!r.ok){
+      let m = ''; try { const j = await r.json(); m = (j.error && (j.error.message || j.error.status)) || ''; } catch {}
+      const e = new Error(m || ('Google Drive error ' + r.status)); e.status = r.status; throw e;
+    }
+    return r;
   }
-  $('rsFresh').textContent = 'Skip and start with a new key';
-  $('rsCancel').textContent = 'Log out';
-  $('rsMsg').after(el('div', { id: 'rsDbg', className: 'hint', style: 'font-size:11px;opacity:.7;margin-top:6px' }));
-
-  /* "just went to Google" marker (3 minutes) */
-  const isPend = uid => { const [u, t] = (sessionStorage.getItem(PK) || '').split('|'); return u === uid && Date.now() - (+t) < 180000; };
-  const setPend = uid => sessionStorage.setItem(PK, uid + '|' + Date.now());
-  const clrPend = () => sessionStorage.removeItem(PK);
+  async function find(tok, uid){
+    const q = encodeURIComponent("name='" + fname(uid) + "' and 'appDataFolder' in parents");
+    const j = await (await dget(API + '/drive/v3/files?spaces=appDataFolder&fields=files(id)&q=' + q, tok)).json();
+    return (j.files || [])[0] || null;
+  }
+  const readFile = async (tok, f) => JSON.parse(await (await dget(API + '/drive/v3/files/' + f.id + '?alt=media', tok)).text());
 
   async function driveKey(tok, prof){
-    const H = { Authorization: 'Bearer ' + tok };
-    const q = encodeURIComponent("name='absol-key-" + prof.id + ".json' and 'appDataFolder' in parents");
-    let r = await fetch(API + '/drive/v3/files?spaces=appDataFolder&fields=files(id)&q=' + q, { headers: H });
-    if (!r.ok) throw new Error('Google Drive error ' + r.status);
-    const f = ((await r.json()).files || [])[0];
-    if (!f) throw new Error('No Drive backup found for this account');
-    r = await fetch(API + '/drive/v3/files/' + f.id + '?alt=media', { headers: H });
-    if (!r.ok) throw new Error('Google Drive error ' + r.status);
-    const o = JSON.parse(await r.text());
-    if (o.mode !== 'plain' || !o.sk) throw new Error('This backup was made with a passphrase. Replace it from a device that has your key');
+    const f = await find(tok, prof.id);
+    if (!f) throw new Error('There is no backup in your Google Drive yet. Log in once with Google on the device that has your messages, and it will be backed up automatically.');
+    const o = await readFile(tok, f);
+    if (o.mode !== 'plain' || !o.sk) throw new Error('The backup in your Drive was made with a passphrase. Log in once with Google on the device that has your messages, and it will be replaced automatically.');
     const sk = unb64(o.sk);
-    if (b64(nacl.box.keyPair.fromSecretKey(sk).publicKey) !== prof.public_key) throw new Error('This backup doesn’t match your account’s current key');
+    if (b64(nacl.box.keyPair.fromSecretKey(sk).publicKey) !== prof.public_key) throw new Error('The backup in your Drive belongs to an older key for this account.');
     return sk;
   }
 
+  /* 2) restore with no passphrase */
+  function fail(text){
+    return new Promise(res => {
+      let done = false;
+      const fin = v => { if (done) return; done = true; d.close(); d.remove(); res(v); };
+      const d = el('dialog', {}, el('h2', { textContent: 'Couldn’t restore your chats' }),
+        el('p', { className: 'hint', textContent: text }),
+        el('div', { className: 'row', style: 'margin-top:12px' }, el('button', { textContent: 'Try again', onclick: () => { clrPend(); location.reload(); } })),
+        el('div', { className: 'row', style: 'margin-top:8px' },
+          el('button', { className: 'ghost', textContent: 'Log out', onclick: () => fin(null) }),
+          el('button', { className: 'ghost', textContent: 'New key', onclick: () => { if (confirm('Create a new key? Your older messages will stay unreadable.')) fin({ fresh: true }); } })));
+      d.addEventListener('cancel', e => e.preventDefault());
+      document.body.appendChild(d); d.showModal();
+    });
+  }
   askRestore = async function(prof){
-    let why = '', dbg = '';
+    let text = '';
     try {
       const { data: { session } } = await sb.auth.getSession();
-      const user = session && session.user, uid = user && user.id;
+      const user = session && session.user;
       const linked = !!(user && (user.identities || []).some(i => i.provider === 'google'));
-      const token = !!(session && session.provider_token), pend = isPend(uid);
-      dbg = 'Google linked: ' + (linked ? 'yes' : 'no') + ' · Drive token: ' + (token ? 'yes' : 'no') + ' · came back from Google: ' + (pend ? 'yes' : 'no');
-      if (!linked) why = 'This account has no linked Google, so Drive restore is not available.';
-      else if (pend){ clrPend(); why = sessionStorage.getItem(ERR) || 'Google Drive gave no result and no message.'; }
+      if (!linked) text = 'This account isn’t linked to Google, so your key can’t be restored automatically.';
       else {
-        setPend(uid); sessionStorage.removeItem(ERR);
-        if (token){ const sk = await driveKey(session.provider_token, prof); clrPend(); return { sk }; }
-        _toast('Restoring from Google Drive…');
-        localStorage.setItem(OP, JSON.stringify({ op: 'restore', t: Date.now() }));
-        const { data, error } = await sb.auth.signInWithOAuth({ provider: 'google', options: {
-          redirectTo: location.origin + location.pathname, scopes: SCOPE, skipBrowserRedirect: true,
-          queryParams: { prompt: 'select_account consent' } } });
-        if (error || !data || !data.url) throw (error || new Error('Google sign-in URL missing'));
-        location.assign(data.url);
-        return new Promise(() => {});                         /* page is leaving for Google */
+        const tok = session.provider_token; let needPerm = !tok;
+        if (tok){
+          try { toast('Restoring your chats…'); const sk = await driveKey(tok, prof); clrPend(); return { sk }; }
+          catch (e){
+            if (e.status === 401 || e.status === 403){ needPerm = true; text = 'Google refused Drive access (' + e.status + '): ' + e.message; }
+            else text = e.message || String(e);
+          }
+        }
+        if (needPerm && !pend()){
+          setPend(); toast('Restoring your chats…');
+          const { data, error } = await sb.auth.signInWithOAuth({ provider: 'google', options: {
+            redirectTo: location.origin + location.pathname, scopes: SCOPE, skipBrowserRedirect: true,
+            queryParams: { prompt: 'select_account consent' } } });
+          if (error || !data || !data.url) throw (error || new Error('Google sign-in URL missing'));
+          location.assign(data.url);
+          return new Promise(() => {});                      /* page is leaving for Google */
+        }
+        if (needPerm && !text) text = 'Google didn’t give Drive access.';
       }
-    } catch (e){ localStorage.removeItem(OP); clrPend(); why = e.message || String(e); }
-    dlg.classList.remove('pp'); tog.textContent = 'Use a passphrase instead';
-    const p = origAsk(prof);
-    $('rsMsg').textContent = why ? 'Drive restore did not work: ' + why : '';
-    $('rsDbg').textContent = dbg;
-    return p;
+    } catch (e){ text = e.message || String(e); }
+    clrPend();
+    return fail(text);
   };
-})();
-</script>
-<!-- ===== END ABSOL FIX 3 ===== -->
-  <!-- ===== ABSOL FIX 4: ask for Drive permission when the token lacks it ===== -->
-<script>
-(function(){
-  const prevAsk = askRestore;
-  askRestore = async function(prof){
-    const orig = sb.auth.getSession.bind(sb.auth);
-    let strip = false;
-    try {
-      const { data: { session } } = await orig();
-      if (session && session.provider_token){
-        const r = await fetch('https://oauth2.googleapis.com/tokeninfo?access_token=' + encodeURIComponent(session.provider_token));
-        const j = r.ok ? await r.json() : {};
-        if (!/drive\.appdata/.test(j.scope || '')) strip = true;   /* plain Google login: no Drive permission */
-      }
-    } catch (e){ console.warn('[drive scope check]', e); }
-    if (strip){
-      sb.auth.getSession = async () => {
-        const x = await orig();
-        if (x.data && x.data.session) x.data.session = { ...x.data.session, provider_token: null };
-        return x;
-      };
+
+  /* 3) automatic backup after a Google login on a device that has the key */
+  async function autoBackup(tok){
+    if (b64(nacl.box.keyPair.fromSecretKey(me.sk).publicKey) !== me.pk) return false;
+    const plain = JSON.stringify({ v: 2, app: 'absol', mode: 'plain', sk: b64(me.sk) });
+    const f = await find(tok, me.id);
+    if (f){ try { const o = await readFile(tok, f); if (o.mode === 'plain' && o.sk === b64(me.sk)) return false; } catch {} }
+    const H = { Authorization: 'Bearer ' + tok };
+    let r;
+    if (f) r = await fetch(API + '/upload/drive/v3/files/' + f.id + '?uploadType=media', { method: 'PATCH', headers: { ...H, 'Content-Type': 'application/json' }, body: plain });
+    else {
+      const b = 'absolbnd', body = '--' + b + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify({ name: fname(me.id), parents: ['appDataFolder'] }) + '\r\n--' + b + '\r\nContent-Type: application/json\r\n\r\n' + plain + '\r\n--' + b + '--';
+      r = await fetch(API + '/upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: { ...H, 'Content-Type': 'multipart/related; boundary=' + b }, body });
     }
-    try { return await prevAsk(prof); }
-    finally { if (strip) sb.auth.getSession = orig; }
-  };
+    if (!r.ok) throw new Error('Drive upload ' + r.status);
+    me.backedUp = true; $('banner').hidden = true;
+    await sb.auth.updateUser({ data: { drive_backup: new Date().toISOString() } });
+    return true;
+  }
+  const appVisible = () => [...document.querySelectorAll('#app > section')].some(s => !s.hidden && s.id !== 'auth');
+  let did = null;
+  setInterval(async () => {
+    if (!me || did === me.id || !appVisible()) return; did = me.id;
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const tok = session && session.provider_token; if (!tok) return;
+      if (await autoBackup(tok)) toast('Key backed up to Google Drive');
+    } catch (e){ console.warn('[auto backup]', e.message); }
+  }, 1500);
+
+  /* no backup reminder pop-up when a Drive token is present */
+  sb.auth.getSession().then(({ data: { session } }) => {
+    if (session && session.provider_token) try { localStorage.setItem('absol-bknag:' + session.user.id, String(Date.now())); } catch {}
+  });
 })();
 </script>
-<!-- ===== END ABSOL FIX 4 ===== -->
+<!-- ===== END ABSOL FIX 5 ===== -->
 </body>
 </html>
