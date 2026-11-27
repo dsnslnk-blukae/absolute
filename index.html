@@ -8113,6 +8113,84 @@ body.absol-audio-open {
 })();
 </script>
 <!-- ============== END ABSOL ACTION STATE + ALIGNMENT ============== -->
+<!-- ===== ABSOL FIX: dock, mute icon, remind, selected tile ===== -->
+<style>
+/* dock lives inside the chat card, flush with its rounded corners */
+#cardChats > #absActionDock{
+  position:absolute!important;left:0!important;right:0!important;bottom:0!important;
+  transform:none!important;width:auto!important;
+  padding:8px 8px 6px;background:var(--surface);
+  border:0;border-top:1px solid var(--border);border-radius:0;
+  backdrop-filter:none!important;z-index:5}
+#cardChats:has(#absActionDock.on) #convos{padding-bottom:112px}
+#cardChats:has(#absActionDock.on) .fab{display:none}
 
+/* Remind is a normal button, not permanently highlighted */
+.abs-action.primary{background:var(--surface2)!important;border-color:var(--border)!important}
+
+/* selected chat: rounded tile, no square outline */
+.convo.abs-picked{
+  outline:none!important;margin:3px 8px;padding:9px 8px;
+  border:1px solid color-mix(in srgb,var(--accent) 55%,var(--border));
+  border-radius:18px!important;
+  background:color-mix(in srgb,var(--accent) 14%,var(--surface))}
+
+/* mute icon on chat rows (same style as the pin icon) */
+.convo .tx b .muteic{display:inline-flex;align-items:center;width:16px;height:16px;
+  margin:0 0 0 7px;vertical-align:-2px;color:var(--muted)}
+.convo .tx b .muteic svg{width:15px;height:15px;fill:none;stroke:currentColor;
+  stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+</style>
+<script>
+(function(){
+  const card = document.getElementById('cardChats');
+  const dock = document.getElementById('absActionDock');
+  if (!card || !dock) return;
+  card.appendChild(dock);
+
+  /* keep the Remind button plain: short label, never "active" */
+  const rb = dock.querySelector('[data-action="remind"]');
+  function fixRemind(){
+    const l = rb.querySelector('.abs-label');
+    if (l && l.textContent !== 'Remind') l.textContent = 'Remind';
+    if (rb.dataset.state) rb.dataset.state = '';
+  }
+  if (rb){
+    new MutationObserver(fixRemind).observe(rb, {subtree:true, childList:true, characterData:true, attributes:true});
+    fixRemind();
+  }
+
+  /* mute icon for direct chats (groups already show theirs) */
+  const MUTE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4zM16 9l5 6M21 9l-5 6"/></svg>';
+  function orderedItems(){
+    const last = {}, items = [];
+    msgs.filter(visible).forEach(m => last[otherId(m)] = m);
+    Object.keys(last).forEach(id => items.push({kind:'dm', id, t:+new Date(last[id].created_at)}));
+    Object.keys(groups).forEach(id => {
+      const gm = lastGroupMsg(id);
+      items.push({kind:'group', id, t:+new Date(gm ? gm.created_at : groups[id].created_at)});
+    });
+    const pin = x => x.kind==='dm' ? !!st(x.id).pinned : !!(gset[x.id]||{}).pinned;
+    const fav = x => x.kind==='dm' ? !!st(x.id).favorite : !!(gset[x.id]||{}).favorite;
+    return items.sort((a,b) => (pin(b)-pin(a)) || (fav(b)-fav(a)) || (b.t-a.t));
+  }
+  function muteIcons(){
+    if (!me) return;
+    const rows = [...document.querySelectorAll('#convos > .convo')], items = orderedItems();
+    if (rows.length !== items.length) return;
+    rows.forEach((row, i) => {
+      const it = items[i], b = row.querySelector('.tx b');
+      if (!b || it.kind !== 'dm' || !st(it.id).muted || b.querySelector('.muteic')) return;
+      const s = document.createElement('span');
+      s.className = 'muteic'; s.title = 'Muted'; s.innerHTML = MUTE;
+      b.appendChild(s);
+    });
+  }
+  const prev = renderList;
+  renderList = function(){ prev(); try { muteIcons(); } catch(e){ console.warn('[mute icon]', e); } };
+  renderList();
+})();
+</script>
+<!-- ===== END ABSOL FIX ===== -->
 </body>
 </html>
