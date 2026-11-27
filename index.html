@@ -5453,6 +5453,128 @@ body.pblur #app,body.pblur dialog{filter:blur(26px)}
 })();
 </script>
 <!-- ===== END RECOVERY PATCH ===== -->
+  <!-- ===== ABSOL DRIVE KEY BACKUP ===== -->
+<script>
+(function(){
+  const SCOPE = 'https://www.googleapis.com/auth/drive.appdata', OP = 'absol-drive-op', API = 'https://www.googleapis.com';
+  const redirect = location.origin + location.pathname, fname = uid => 'absol-key-' + uid + '.json';
+  let curTok = null;
+  const H = t => ({ Authorization: 'Bearer ' + t });
+  const ok = r => { if (!r.ok) throw new Error('Google Drive error ' + r.status); return r; };
+
+  async function findFile(tok, name){
+    const q = encodeURIComponent("name='" + name + "' and 'appDataFolder' in parents");
+    const j = await ok(await fetch(API + '/drive/v3/files?spaces=appDataFolder&fields=files(id)&q=' + q, { headers: H(tok) })).json();
+    return (j.files || [])[0] || null;
+  }
+  async function upload(tok, name, text){
+    const ex = await findFile(tok, name);
+    if (ex) return ok(await fetch(API + '/upload/drive/v3/files/' + ex.id + '?uploadType=media', { method: 'PATCH', headers: { ...H(tok), 'Content-Type': 'application/json' }, body: text }));
+    const b = 'absolbnd', body = '--' + b + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify({ name, parents: ['appDataFolder'] }) + '\r\n--' + b + '\r\nContent-Type: application/json\r\n\r\n' + text + '\r\n--' + b + '--';
+    return ok(await fetch(API + '/upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: { ...H(tok), 'Content-Type': 'multipart/related; boundary=' + b }, body }));
+  }
+  async function toGoogle(){
+    const { data: { user } } = await sb.auth.getUser();
+    const linked = ((user && user.identities) || []).some(i => i.provider === 'google');
+    const options = { redirectTo: redirect, scopes: SCOPE, skipBrowserRedirect: true, queryParams: { prompt: 'select_account consent' } };
+    const r = linked ? await sb.auth.signInWithOAuth({ provider: 'google', options }) : await sb.auth.linkIdentity({ provider: 'google', options });
+    if (r.error || !r.data || !r.data.url) throw (r.error || new Error('Google sign-in URL missing'));
+    location.assign(r.data.url);
+  }
+  async function restore(session, tok){
+    const uid = session.user.id;
+    try {
+      if (!tok) throw new Error('Google did not give Drive access. Try again and allow it.');
+      const f = await findFile(tok, fname(uid));
+      if (!f) throw new Error('No Drive backup found for this account');
+      const o = JSON.parse(await ok(await fetch(API + '/drive/v3/files/' + f.id + '?alt=media', { headers: H(tok) })).text());
+      let sk;
+      if (o.mode === 'pass'){ const p = prompt('Enter the passphrase you set for this backup'); if (!p) return; sk = await openBackup(o.enc, p); }
+      else sk = unb64(o.sk);
+      const { data: prof } = await sb.from('profiles').select('public_key').eq('id', uid).maybeSingle();
+      if (!prof || b64(nacl.box.keyPair.fromSecretKey(sk).publicKey) !== prof.public_key) throw new Error('This backup doesn’t match your account’s current key');
+      localStorage.setItem('sk:' + uid, b64(sk)); toast('Key restored from Google Drive');
+    } catch (e){ toast(friendly(e)); }
+  }
+
+  /* after returning from Google: finish a pending backup or restore */
+  const prev = start;
+  start = async function(){
+    try {
+      const raw = localStorage.getItem(OP), op = raw && JSON.parse(raw);
+      const { data: { session } } = await sb.auth.getSession();
+      if (session && session.provider_token) curTok = session.provider_token;
+      if (op){
+        localStorage.removeItem(OP);
+        if (session && Date.now() - op.t < 600000){
+          if (op.op === 'restore' && !localStorage.getItem('sk:' + session.user.id)) await restore(session, curTok);
+          else if (op.op === 'backup'){
+            try {
+              if (!curTok) throw new Error('Google did not give Drive access. Try again and allow it.');
+              await upload(curTok, fname(session.user.id), op.file);
+              await sb.auth.updateUser({ data: { drive_backup: new Date().toISOString() } });
+              toast('Key backed up to Google Drive');
+            } catch (e){ toast('Backup failed: ' + friendly(e)); }
+          }
+        }
+      }
+    } catch (e){ console.warn('[drive]', e); }
+    return prev();
+  };
+
+  /* backup dialog */
+  async function done(){ me.backedUp = true; $('banner').hidden = true; await sb.auth.updateUser({ data: { drive_backup: new Date().toISOString() } }); toast('Key backed up to Google Drive'); }
+  function showDlg(){
+    if (!me || document.getElementById('driveDlg')) return;
+    const pw = el('input', { type: 'password', placeholder: 'Optional passphrase for extra protection', autocomplete: 'new-password', style: 'margin-top:8px' });
+    const msg = el('div', { className: 'hint', style: 'margin-top:8px;color:var(--danger)' });
+    const go = el('button', { textContent: 'Back up to Drive', onclick: async () => {
+      const p = pw.value;
+      if (p && (p.length < 12 || !/[a-z]/i.test(p) || !/\d/.test(p))) return (msg.textContent = 'Passphrase: 12+ characters with letters and numbers');
+      go.disabled = true; msg.style.color = 'var(--muted)'; msg.textContent = 'Working…';
+      try {
+        const file = JSON.stringify(p ? { v: 2, app: 'absol', mode: 'pass', enc: await makeBackup(p) } : { v: 2, app: 'absol', mode: 'plain', sk: b64(me.sk) });
+        if (curTok){ try { await upload(curTok, fname(me.id), file); await done(); d.close(); return; } catch {} }
+        localStorage.setItem(OP, JSON.stringify({ op: 'backup', t: Date.now(), file }));
+        await toGoogle();
+      } catch (e){ localStorage.removeItem(OP); msg.style.color = 'var(--danger)'; msg.textContent = friendly(e); go.disabled = false; }
+    } });
+    const d = el('dialog', { id: 'driveDlg' }, el('h2', { textContent: 'Back up your key' }),
+      el('p', { className: 'hint', textContent: 'Saves your encryption key to a hidden folder in your own Google Drive. On a new phone, tap Restore from Google Drive to get your old messages back. Without a passphrase, your Google account is what protects the backup.' }), pw, msg,
+      el('div', { className: 'row', style: 'margin-top:12px' }, el('button', { className: 'ghost', textContent: 'Not now', onclick: () => d.close() }), go));
+    d.addEventListener('close', () => d.remove());
+    document.body.appendChild(d); d.showModal();
+  }
+  openBackupDlg = showDlg;
+  $('bannerBtn').onclick = showDlg; $('backupBtn').onclick = showDlg;
+
+  /* restore button in the "Restore your key" dialog */
+  const rb = el('button', { className: 'ghost', textContent: 'Restore from Google Drive', style: 'border:1px solid var(--accent)', onclick: async () => {
+    try {
+      const { data: { user } } = await sb.auth.getUser();
+      if (!((user && user.identities) || []).some(i => i.provider === 'google')) return toast('This account has no linked Google. Use your passphrase backup instead.');
+      localStorage.setItem(OP, JSON.stringify({ op: 'restore', t: Date.now() }));
+      await toGoogle();
+    } catch (e){ localStorage.removeItem(OP); toast(friendly(e)); }
+  } });
+  $('rsGo').closest('.row').after(el('div', { className: 'row', style: 'margin-top:8px' }, rb));
+
+  /* ask once a day until the key is backed up */
+  let seen = null;
+  setInterval(async () => {
+    if (!me){ seen = null; return; }
+    if (seen === me.id || ![...document.querySelectorAll('#app > section')].some(s => !s.hidden && s.id !== 'auth')) return;
+    seen = me.id;
+    const { data: { session } } = await sb.auth.getSession();
+    if (((session && session.user.user_metadata) || {}).drive_backup){ me.backedUp = true; $('banner').hidden = true; return; }
+    if (me.backedUp || document.getElementById('lockUI')) return;
+    const k = 'absol-bknag:' + me.id;
+    if (Date.now() - (+localStorage.getItem(k) || 0) < 86400000) return;
+    localStorage.setItem(k, String(Date.now())); showDlg();
+  }, 1500);
+})();
+</script>
+<!-- ===== END DRIVE KEY BACKUP ===== -->
 <!-- ===== ABSOL GOOGLE AUTH PATCH ===== -->
 <style>
   #googleLoginBtn {
