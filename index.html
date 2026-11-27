@@ -8224,7 +8224,92 @@ body.absol-audio-open {
 })();
 </script>
 <!-- ===== END ABSOL FIX ===== -->
-  
+  <!-- ===== ABSOL FIX 2: silent Drive restore + clearer restore dialog ===== -->
+<style>
+#driveDlg input{display:none}
+#rsDlg:not(.pp) #rsPass,
+#rsDlg:not(.pp) #rsPass ~ p.hint,
+#rsDlg:not(.pp) #rsFile,
+#rsDlg:not(.pp) #rsText,
+#rsDlg:not(.pp) #rsGoRow{display:none}
+</style>
+<script>
+(function(){
+  const OP = 'absol-drive-op', API = 'https://www.googleapis.com';
+  const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+  const origAsk = askRestore, dlg = document.getElementById('rsDlg');
+
+  /* remember the last Drive-related message so the dialog can show it */
+  const _toast = toast;
+  toast = function(t){
+    try { if (/drive|google|backup|passphrase|key/i.test(String(t))) sessionStorage.setItem('absol-drive-err', String(t)); } catch {}
+    return _toast.apply(this, arguments);
+  };
+
+  /* dialog layout: Drive first, passphrase hidden until asked for */
+  const goRow = $('rsGo').closest('.row'); goRow.id = 'rsGoRow';
+  const dBtn = [...dlg.querySelectorAll('button')].find(b => /Google Drive/.test(b.textContent));
+  const dRow = dBtn && dBtn.closest('.row');
+  const tog = el('button', { className: 'ghost', textContent: 'Use a passphrase instead', onclick: () => {
+    dlg.classList.toggle('pp'); tog.textContent = dlg.classList.contains('pp') ? 'Hide passphrase' : 'Use a passphrase instead';
+  } });
+  dlg.querySelector('p.hint').textContent = 'This device doesn’t have your encryption key yet. Restore it from Google Drive, or use your passphrase.';
+  if (dRow){
+    dBtn.classList.remove('ghost'); dBtn.removeAttribute('style');
+    dlg.querySelector('p.hint').after(dRow);
+    dRow.after(el('div', { className: 'row', style: 'margin-top:8px' }, tog));
+  }
+  $('rsFresh').textContent = 'Skip and start with a new key';
+  $('rsCancel').textContent = 'Log out';
+
+  async function driveKey(tok, prof){
+    const H = { Authorization: 'Bearer ' + tok };
+    const q = encodeURIComponent("name='absol-key-" + prof.id + ".json' and 'appDataFolder' in parents");
+    let r = await fetch(API + '/drive/v3/files?spaces=appDataFolder&fields=files(id)&q=' + q, { headers: H });
+    if (!r.ok) throw new Error('Google Drive error ' + r.status);
+    const f = ((await r.json()).files || [])[0];
+    if (!f) throw new Error('No Drive backup found for this account');
+    r = await fetch(API + '/drive/v3/files/' + f.id + '?alt=media', { headers: H });
+    if (!r.ok) throw new Error('Google Drive error ' + r.status);
+    const o = JSON.parse(await r.text());
+    if (o.mode !== 'plain' || !o.sk) throw new Error('This backup was made with a passphrase. Make a new one without a passphrase on your old phone');
+    const sk = unb64(o.sk);
+    if (b64(nacl.box.keyPair.fromSecretKey(sk).publicKey) !== prof.public_key) throw new Error('This backup doesn’t match your account’s current key');
+    return sk;
+  }
+
+  askRestore = async function(prof){
+    let why = '';
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const user = session && session.user;
+      const linked = user && (user.identities || []).some(i => i.provider === 'google');
+      const k = 'absol-autodrive:' + (user && user.id);
+      if (linked && Date.now() - (+localStorage.getItem(k) || 0) > 600000){
+        localStorage.setItem(k, String(Date.now()));            /* one automatic try */
+        sessionStorage.removeItem('absol-drive-err');
+        if (session.provider_token){
+          return { sk: await driveKey(session.provider_token, prof) };
+        }
+        _toast('Restoring from Google Drive…');
+        localStorage.setItem(OP, JSON.stringify({ op: 'restore', t: Date.now() }));
+        const { data, error } = await sb.auth.signInWithOAuth({ provider: 'google', options: {
+          redirectTo: location.origin + location.pathname, scopes: SCOPE, skipBrowserRedirect: true,
+          queryParams: { prompt: 'select_account consent' } } });
+        if (error || !data || !data.url) throw (error || new Error('Google sign-in URL missing'));
+        location.assign(data.url);
+        return new Promise(() => {});                            /* page is leaving for Google */
+      }
+      if (linked && Date.now() - (+localStorage.getItem(k) || 0) <= 600000) why = sessionStorage.getItem('absol-drive-err') || '';
+    } catch (e){ localStorage.removeItem(OP); why = e.message || String(e); }
+    dlg.classList.remove('pp'); tog.textContent = 'Use a passphrase instead';
+    const p = origAsk(prof);
+    if (why) $('rsMsg').textContent = 'Drive restore did not work: ' + why;
+    return p;
+  };
+})();
+</script>
+<!-- ===== END ABSOL FIX 2 ===== -->
 
 </body>
 </html>
