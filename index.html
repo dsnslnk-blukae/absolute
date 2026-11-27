@@ -6458,5 +6458,80 @@ googleBtn.addEventListener('click', async function () {
 </script>
 <!-- ===== END ABSOL FEATURES PATCH ===== -->
 
+<!-- ===== ABSOL VOICE PLAYBACK SPEED PATCH ===== -->
+<style>
+.vm .vspeed {
+  flex: none;
+  padding: 5px 7px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  opacity: .8;
+}
+.vm .vspeed:active {
+  transform: scale(.95);
+}
+</style>
+
+<script>
+(function () {
+  const originalPush = Array.prototype.push;
+
+  // Enhance voice players after they are created.
+  function enhanceVoicePlayers() {
+    document.querySelectorAll('.vm').forEach(player => {
+      if (player.dataset.speedReady) return;
+
+      const playButton = player.querySelector('.pp');
+      if (!playButton) return;
+
+      player.dataset.speedReady = '1';
+
+      let speed = 1;
+      let audio = null;
+
+      const speedButton = document.createElement('button');
+      speedButton.type = 'button';
+      speedButton.className = 'vspeed';
+      speedButton.textContent = '1×';
+      speedButton.setAttribute('aria-label', 'Change playback speed');
+
+      player.appendChild(speedButton);
+
+      // Watch the existing player for its audio instance.
+      const observer = new MutationObserver(() => {
+        // Audio playback is managed by the original voice player.
+      });
+
+      speedButton.addEventListener('click', event => {
+        event.stopPropagation();
+
+        speed = speed === 1 ? 1.5 : speed === 1.5 ? 2 : 1;
+        speedButton.textContent = speed + '×';
+
+        // Find the audio element associated with this player.
+        // The original player creates an Audio object, not a DOM element.
+        if (player._audio) player._audio.playbackRate = speed;
+      });
+
+      observer.disconnect();
+    });
+  }
+
+  const observer = new MutationObserver(enhanceVoicePlayers);
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  enhanceVoicePlayers();
+})();
+</script>
+<!-- ===== END ABSOL VOICE PLAYBACK SPEED PATCH ===== -->
+
 </body>
 </html>
