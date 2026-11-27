@@ -8275,5 +8275,41 @@ body.absol-audio-open {
 })();
 </script>
 <!-- ===== END ABSOL FIX ===== -->
+  <!-- ===== ABSOL TWEAK: 2px borders and dividers, slightly rounder corners ===== -->
+<style>
+/* corners: a little rounder (was 12 / 10) */
+:root{--r:16px;--rs:13px}
+.switch .ind,.switch button{border-radius:11px}
+.av.sm{border-radius:11px}
+.av.big{border-radius:22px}
+.fab{border-radius:17px}
+.cb{border-radius:19px}
+.ub{border-radius:9px}
+.abs-action{border-radius:19px}
+.abs-dialog{border-radius:24px}
+.abs-dialog .abs-option{border-radius:15px}
+#msgs .cl{border-radius:15px}
+#msgs .rq.out{border-radius:13px}
+#msgs .b.me,#msgs .b.them{border-radius:18px!important}
+#msgs .b.me{border-bottom-right-radius:6px!important}
+#msgs .b.them{border-bottom-left-radius:6px!important}
+.convo.abs-picked{border-radius:22px!important}
+
+/* borders: 1px to 2px */
+.card,.scard,.dcard,.mbox,.switch,.menu,.abs-dialog,
+input,textarea,select,.iconbtn,.searchpill,.chip,.ghost.wide,
+.b.them,.abs-action,.abs-dialog .abs-option,#googleLoginBtn{border-width:2px}
+.chead{border-bottom-width:2px!important}
+#cardChats > #absActionDock{border-top-width:2px}
+
+/* dividers: 1px to 2px */
+.convo,.srow,.lk,.mrow,.schrow,.mlist,
+.abs-dialog .abs-group-row,.abs-reminder-row,.rxbar{border-bottom-width:2px}
+.mlist{border-top-width:2px}
+
+/* selected chat tile keeps the same height with the thicker border */
+.convo.abs-picked{border-width:2px;padding:8px 7px}
+</style>
+<!-- ===== END ABSOL TWEAK ===== -->
 </body>
 </html>
