@@ -7369,5 +7369,37 @@ body.absol-audio-open {
 
 <!-- ===== END ABSOL DESKTOP MODE V1 ===== -->
 
+<!-- ===== ABSOL DESKTOP MOBILE RAIL FIX ===== -->
+<style>
+/* Never show the desktop navigation rail on mobile */
+#absolDesktopRail {
+  display: none !important;
+}
+
+/* Show it only when a genuine desktop-width viewport is available */
+@media (min-width: 1100px) {
+  body.absol-desktop-shell #absolDesktopRail {
+    display: flex !important;
+  }
+}
+
+/* Keep the original mobile app width and layout */
+@media (max-width: 1099px) {
+  body #app {
+    display: flex;
+    flex-direction: column;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  body #list,
+  body #chat {
+    grid-column: auto;
+    grid-row: auto;
+  }
+}
+</style>
+<!-- ===== END ABSOL DESKTOP MOBILE RAIL FIX ===== -->
+
 </body>
 </html>
