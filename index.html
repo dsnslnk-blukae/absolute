@@ -7969,5 +7969,150 @@ body.absol-audio-open {
 </script>
 <!-- ============== END ABSOL VISUAL REFINEMENTS ============== -->
 
+<!-- ============== ABSOL ACTION STATE + ALIGNMENT ============== -->
+<style>
+/* Align the dock with the chat-list panel */
+#absActionDock{
+  bottom:calc(9px + env(safe-area-inset-bottom,0px))!important;
+  border-radius:26px;
+  padding-bottom:2px;
+}
+
+/* Clear visual distinction for inverse actions */
+.abs-action[data-state="active"]{
+  background:color-mix(in srgb,var(--accent) 20%,var(--surface2));
+  border-color:color-mix(in srgb,var(--accent) 48%,var(--border));
+}
+</style>
+
+<script>
+(function(){
+  'use strict';
+  if(window.__absolActionState) return;
+  window.__absolActionState=true;
+
+  const dock=document.getElementById('absActionDock');
+  const list=document.getElementById('convos');
+  if(!dock||!list) return;
+
+  const icons={
+    pin:'<svg viewBox="0 0 24 24"><path d="M8 3h8l-1.2 5 3.2 3v2H6v-2l3.2-3L8 3Z"/><path d="M12 13v8"/></svg>',
+    unpin:'<svg viewBox="0 0 24 24"><path d="m4 4 16 16M8 3h8l-1.2 5 3.2 3v2H6v-2l3.2-3L8 3Z"/></svg>',
+    mute:'<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4zM16 9l5 6M21 9l-5 6"/></svg>',
+    unmute:'<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4zM16 9a5 5 0 0 1 0 6M18 5a10 10 0 0 1 0 14"/></svg>',
+    favourite:'<svg viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg>',
+    unfavourite:'<svg viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/><path d="M4 4 20 20"/></svg>',
+    remind:'<svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>'
+  };
+
+  function selectedItems(){
+    const last={},items=[];
+
+    msgs.filter(visible).forEach(m=>{
+      last[otherId(m)]=m;
+    });
+
+    Object.keys(last).forEach(id=>items.push({kind:'dm',id}));
+    Object.keys(groups).forEach(id=>items.push({kind:'group',id}));
+
+    const time=x=>{
+      const m=x.kind==='dm'?last[x.id]:lastGroupMsg(x.id);
+      return m?+new Date(m.created_at):
+        +(new Date(groups[x.id]?.created_at||0));
+    };
+
+    items.sort((a,b)=>{
+      const pa=a.kind==='dm'?!!st(a.id).pinned:!!gset[a.id]?.pinned;
+      const pb=b.kind==='dm'?!!st(b.id).pinned:!!gset[b.id]?.pinned;
+      if(pa!==pb)return pb-pa;
+
+      const fa=a.kind==='dm'?!!st(a.id).favorite:!!gset[a.id]?.favorite;
+      const fb=b.kind==='dm'?!!st(b.id).favorite:!!gset[b.id]?.favorite;
+      if(fa!==fb)return fb-fa;
+
+      return time(b)-time(a);
+    });
+
+    const rows=[...list.querySelectorAll(':scope > .convo')];
+
+    return rows.map((row,i)=>
+      row.classList.contains('abs-picked')?items[i]:null
+    ).filter(Boolean);
+  }
+
+  function updateActions(){
+    const items=selectedItems();
+    if(!items.length)return;
+
+    const allOn=field=>items.every(x=>
+      x.kind==='dm'?!!st(x.id)[field]:!!gset[x.id]?.[field]
+    );
+
+    function setButton(action,label,icon,active){
+      const b=dock.querySelector('[data-action="'+action+'"]');
+      if(!b)return;
+      const text=b.querySelector('.abs-label');
+      const image=b.querySelector('.abs-ico');
+      if(text)text.textContent=label;
+      if(image)image.innerHTML=icon;
+      b.dataset.state=active?'active':'';
+      b.setAttribute('aria-label',label);
+    }
+
+    const pinned=allOn('pinned');
+    const muted=allOn('muted');
+    const favourite=allOn('favorite');
+
+    setButton('pin',pinned?'Unpin':'Pin',
+      pinned?icons.unpin:icons.pin,pinned);
+
+    setButton('mute',muted?'Unmute':'Mute',
+      muted?icons.unmute:icons.mute,muted);
+
+    setButton('favourite',
+      favourite?'Unfavourite':'Favourite',
+      favourite?icons.unfavourite:icons.favourite,favourite);
+
+    /* Existing reminders can be managed from the reminder dialog */
+    let reminders=[];
+    try{
+      reminders=JSON.parse(
+        localStorage.getItem('absol-reminders:'+me.id)||'[]'
+      );
+    }catch(e){}
+
+    const hasReminder=reminders.some(r=>
+      items.some(x=>x.kind===r.kind&&x.id===r.id)
+    );
+
+    setButton('remind',
+      hasReminder?'Manage reminders':'Remind',
+      icons.remind,hasReminder);
+  }
+
+  /* Refresh labels when selection or chat settings change */
+  const observer=new MutationObserver(updateActions);
+  observer.observe(list,{
+    subtree:true,
+    childList:true,
+    attributes:true,
+    attributeFilter:['class']
+  });
+
+  const head=document.getElementById('absSelectHead');
+  if(head){
+    observer.observe(head,{subtree:true,childList:true,characterData:true});
+  }
+
+  dock.addEventListener('click',()=>{
+    requestAnimationFrame(updateActions);
+  },true);
+
+  updateActions();
+  console.log('[Absol] Action states and dock alignment ready.');
+})();
+</script>
+<!-- ============== END ABSOL ACTION STATE + ALIGNMENT ============== -->
+
 </body>
 </html>
