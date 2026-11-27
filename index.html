@@ -6458,8 +6458,10 @@ googleBtn.addEventListener('click', async function () {
 </script>
 <!-- ===== END ABSOL FEATURES PATCH ===== -->
 
-<!-- ===== ABSOL VOICE PLAYBACK SPEED PATCH ===== -->
+
+<!-- ===== ABSOL VOICE PLAYER ENHANCEMENTS ===== -->
 <style>
+/* Playback speed button */
 .vm .vspeed {
   flex: none;
   padding: 5px 7px;
@@ -6472,28 +6474,86 @@ googleBtn.addEventListener('click', async function () {
   cursor: pointer;
   opacity: .8;
 }
+
 .vm .vspeed:active {
   transform: scale(.95);
+}
+
+/* Finger seeking on waveform */
+.vm .bars {
+  cursor: pointer;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.vm .bars i {
+  pointer-events: none;
 }
 </style>
 
 <script>
 (function () {
-  const originalPush = Array.prototype.push;
+  'use strict';
 
-  // Enhance voice players after they are created.
-  function enhanceVoicePlayers() {
+  // Keep track of each voice player's audio object.
+  const audioByPlayer = new WeakMap();
+  const playerStates = new WeakMap();
+  const pendingPlayers = [];
+
+  // Associate the existing Audio() object with its voice player.
+  const NativeAudio = window.Audio;
+
+  function EnhancedAudio(...args) {
+    const audio = new NativeAudio(...args);
+    const player = pendingPlayers.shift();
+
+    if (player) {
+      audioByPlayer.set(player, audio);
+
+      const state = playerStates.get(player);
+      if (state) audio.playbackRate = state.speed;
+    }
+
+    return audio;
+  }
+
+  EnhancedAudio.prototype = NativeAudio.prototype;
+  Object.setPrototypeOf(EnhancedAudio, NativeAudio);
+  window.Audio = EnhancedAudio;
+
+  // Detect when the existing play button is pressed.
+  document.addEventListener('click', event => {
+    const button = event.target.closest('.vm .pp');
+    if (!button) return;
+
+    const player = button.closest('.vm');
+
+    if (
+      player &&
+      !audioByPlayer.has(player) &&
+      !pendingPlayers.includes(player)
+    ) {
+      pendingPlayers.push(player);
+    }
+  }, true);
+
+  // Add controls to every existing and newly rendered voice message.
+  function enhancePlayers() {
     document.querySelectorAll('.vm').forEach(player => {
-      if (player.dataset.speedReady) return;
+      if (player.dataset.absolEnhanced) return;
 
-      const playButton = player.querySelector('.pp');
-      if (!playButton) return;
+      const waveform = player.querySelector('.bars');
+      const time = player.querySelector('.vt');
 
-      player.dataset.speedReady = '1';
+      if (!waveform || !time) return;
 
-      let speed = 1;
-      let audio = null;
+      player.dataset.absolEnhanced = '1';
 
+      const state = { speed: 1 };
+      playerStates.set(player, state);
+
+      // Playback speed control.
       const speedButton = document.createElement('button');
       speedButton.type = 'button';
       speedButton.className = 'vspeed';
@@ -6502,36 +6562,94 @@ googleBtn.addEventListener('click', async function () {
 
       player.appendChild(speedButton);
 
-      // Watch the existing player for its audio instance.
-      const observer = new MutationObserver(() => {
-        // Audio playback is managed by the original voice player.
-      });
-
       speedButton.addEventListener('click', event => {
         event.stopPropagation();
 
-        speed = speed === 1 ? 1.5 : speed === 1.5 ? 2 : 1;
-        speedButton.textContent = speed + '×';
+        state.speed =
+          state.speed === 1 ? 1.5 :
+          state.speed === 1.5 ? 2 : 1;
 
-        // Find the audio element associated with this player.
-        // The original player creates an Audio object, not a DOM element.
-        if (player._audio) player._audio.playbackRate = speed;
+        speedButton.textContent = state.speed + '×';
+
+        const audio = audioByPlayer.get(player);
+        if (audio) audio.playbackRate = state.speed;
       });
 
-      observer.disconnect();
+      // Finger and mouse seeking.
+      let dragging = false;
+
+      function seek(event) {
+        const audio = audioByPlayer.get(player);
+
+        if (!audio) return;
+
+        if (!Number.isFinite(audio.duration) || audio.duration <= 0) {
+          return;
+        }
+
+        const rect = waveform.getBoundingClientRect();
+
+        if (!rect.width) return;
+
+        const position = Math.max(
+          0,
+          Math.min(1, (event.clientX - rect.left) / rect.width)
+        );
+
+        audio.currentTime = position * audio.duration;
+        time.textContent =
+          Math.floor(audio.currentTime / 60) + ':' +
+          String(Math.floor(audio.currentTime % 60)).padStart(2, '0');
+      }
+
+      waveform.addEventListener('pointerdown', event => {
+        if (event.button !== undefined && event.button !== 0) return;
+
+        const audio = audioByPlayer.get(player);
+
+        if (!audio) {
+          if (typeof toast === 'function') {
+            toast('Play the voice message once before seeking');
+          }
+          return;
+        }
+
+        dragging = true;
+        event.preventDefault();
+
+        try {
+          waveform.setPointerCapture(event.pointerId);
+        } catch {}
+
+        seek(event);
+      });
+
+      waveform.addEventListener('pointermove', event => {
+        if (dragging) seek(event);
+      });
+
+      function stopDragging() {
+        dragging = false;
+      }
+
+      waveform.addEventListener('pointerup', stopDragging);
+      waveform.addEventListener('pointercancel', stopDragging);
+      waveform.addEventListener('lostpointercapture', stopDragging);
     });
   }
 
-  const observer = new MutationObserver(enhanceVoicePlayers);
+  const observer = new MutationObserver(enhancePlayers);
+
   observer.observe(document.body, {
     childList: true,
     subtree: true
   });
 
-  enhanceVoicePlayers();
+  enhancePlayers();
+
 })();
 </script>
-<!-- ===== END ABSOL VOICE PLAYBACK SPEED PATCH ===== -->
+<!-- ===== END ABSOL VOICE PLAYER ENHANCEMENTS ===== -->
 
 </body>
 </html>
