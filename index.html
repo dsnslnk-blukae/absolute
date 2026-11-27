@@ -5831,6 +5831,305 @@ googleBtn.addEventListener('click', async function () {
 })();
 </script>
 <!-- ===== END GOOGLE-ONLY SIGNUP ===== -->
+<!-- ===== ABSOL: CALLS IN CHAT + GOOGLE SETUP PAGE =====
+     Paste at the very bottom of your HTML, after the "GOOGLE-ONLY SIGNUP" block and before </body>.
+     Nothing is deleted. To undo, delete this block. No SQL needed. -->
+<style>
+/* ---- call entries inside a chat ---- */
+#msgs .cl{align-self:center;display:flex;align-items:center;gap:10px;max-width:88%;margin:6px 0;padding:7px 8px;border-radius:12px;background:var(--surface2);color:var(--text);flex-shrink:0}
+#msgs .cl .cli{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none;background:var(--surface);color:var(--accent2)}
+#msgs .cl .cli .i{width:18px;height:18px;margin:0}
+#msgs .cl .clt{min-width:0}
+#msgs .cl .clt b{display:block;font-size:13.5px;font-weight:700}
+#msgs .cl .clt span{display:block;font-size:11px;color:var(--muted);margin-top:1px}
+#msgs .cl.miss .cli,#msgs .cl.miss .clt b{color:var(--danger)}
+#msgs .cl .chip{padding:6px 11px;font-size:12px;flex:none;margin-left:4px}
+
+/* ---- Google sign-up: username and password page ---- */
+#gSetup{position:fixed;inset:0;z-index:126;overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;justify-content:center;background:var(--bg);color:var(--text);padding:calc(24px + env(safe-area-inset-top,0px)) 18px calc(24px + env(safe-area-inset-bottom,0px))}
+#gSetup .gs{width:100%;max-width:400px;margin:auto 0;display:flex;flex-direction:column;gap:12px}
+#gSetup .gs>*{flex-shrink:0}
+#gSetup .brand{flex:none;margin:0;text-align:center;font-size:22px}
+#gSetup .gs-t{margin:0;text-align:center;font-size:20px;font-weight:800}
+#gSetup .gs-s{margin:0 0 4px;text-align:center;color:var(--muted);font-size:14px}
+#gSetup .gs-mail{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:var(--rs,12px);background:var(--surface);min-width:0}
+#gSetup .gs-ic{display:flex;flex:none;color:var(--accent)}
+#gSetup .gs-ic .i{width:20px;height:20px;margin:0}
+#gSetup .gs-mail div{min-width:0}
+#gSetup .gs-mail b{display:block;font-size:13px}
+#gSetup .gs-mail small{display:block;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#gSetup .gs-av{display:flex;justify-content:center;padding:4px 0}
+#gSetup .gs-card{background:var(--surface);border-radius:var(--r,12px);padding:14px;display:flex;flex-direction:column;gap:6px}
+#gSetup input{background:var(--bg)}
+#gSetup .gs-h{font-size:12.5px;color:var(--muted);min-height:16px;margin:0 2px}
+#gSetup .gs-h.ok{color:#7cc29b}
+#gSetup .gs-h.bad{color:var(--danger)}
+#gSetup .gs-pw{position:relative}
+#gSetup .gs-pw input{padding-right:52px}
+#gSetup .gs-eye{position:absolute;right:4px;top:4px;width:40px;height:40px;padding:0;display:grid;place-items:center;color:var(--muted)}
+#gSetup .gs-eye .i{width:20px;height:20px;margin:0}
+#gSetup .gs-bars{display:flex;gap:4px;margin-top:2px}
+#gSetup .gs-bars i{flex:1;height:4px;border-radius:2px;background:var(--surface2)}
+#gSetup .gs-bars i.on{background:var(--accent)}
+#gSetup .gs-sl{font-size:12px;color:var(--muted);text-align:right;min-height:16px}
+#gSetup .gs-err{color:var(--danger);font-size:13.5px;min-height:18px;text-align:center}
+#gSetup .gs-note{display:flex;gap:8px;align-items:flex-start;color:var(--muted);font-size:12.5px}
+#gSetup .gs-note .i{width:16px;height:16px;margin:2px 0 0}
+#gSetup .gs-note>span:first-child{display:flex;flex:none}
+</style>
+
+<script>
+/* ===================== PART 1: call history inside one-to-one chats ===================== */
+(function(){
+  const AC = window.AbsolCall;
+  if (!AC || !AC.log){ console.warn('[callchat] needs the Calls blocks'); return; }
+
+  const KEY = () => 'absol-cc:' + me.id;
+  function load(){
+    let raw = null;
+    try { raw = localStorage.getItem(KEY()); } catch {}
+    if (raw === null){                       /* first run: bring over the calls you already have */
+      let old = []; try { old = JSON.parse(localStorage.getItem('absol-calls:' + me.id) || '[]'); } catch {}
+      const seed = old.filter(e => e && e.peer && e.t).map((e, i) => ({ id: e.id || (e.t + '-s' + i), peer: e.peer, dir: e.dir, video: !!e.video, t: e.t, status: e.status, dur: e.dur || 0 }));
+      save(seed); return seed;
+    }
+    try { return JSON.parse(raw) || []; } catch { return []; }
+  }
+  function save(a){ try { localStorage.setItem(KEY(), JSON.stringify(a.slice(0, 500))); } catch {} }
+
+  /* every finished call is also stored for the chat */
+  const _log = AC.log;
+  AC.log = function(e){
+    _log.apply(this, arguments);
+    try {
+      if (!me || !e || !e.peer) return;
+      const a = load();
+      if (!a.some(x => x.id === e.id)){
+        a.unshift({ id: e.id, peer: e.peer, dir: e.dir, video: !!e.video, t: e.t, status: e.status, dur: e.dur || 0 });
+        save(a);
+      }
+      if (!curGroup && current === e.peer && !document.getElementById('chat').hidden) renderMsgs();
+    } catch (err) { console.warn('[callchat]', err); }
+  };
+
+  const dur = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  const when = t => fmtTime(new Date(t).toISOString());
+  function node(c){
+    const k = c.video ? 'video call' : 'voice call', out = c.dir === 'out';
+    const miss = c.status === 'missed';
+    let title, sub;
+    if (c.status === 'completed'){ title = (out ? 'Outgoing ' : 'Incoming ') + k; sub = dur(c.dur || 0) + ' · ' + when(c.t); }
+    else {
+      title = miss ? 'Missed ' + k : c.status === 'declined' ? (out ? 'Call declined' : 'Declined ' + k)
+        : c.status === 'noanswer' ? 'No answer' : c.status === 'busy' ? 'Line busy' : 'Call failed';
+      sub = miss ? when(c.t) : (out ? 'Outgoing ' : 'Incoming ') + k + ' · ' + when(c.t);
+    }
+    return el('div', { className: 'cl' + (miss ? ' miss' : '') },
+      el('div', { className: 'cli', textContent: '{{' + (c.video ? 'video' : 'phone') + '}}' }),
+      el('div', { className: 'clt' }, el('b', { textContent: title }), el('span', { textContent: sub })),
+      chipBtn('Call back', () => AC.start(c.peer, !!c.video)));
+  }
+
+  function paint(){
+    if (!me || curGroup || !current || cs.q || cs.links) return;
+    const d = st(current).deleted_before, dt = d ? +new Date(d) : 0;
+    const calls = load().filter(c => c.peer === current && c.t > dt).sort((a, b) => a.t - b.t);
+    if (!calls.length) return;
+    const box = document.getElementById('msgs');
+    box.querySelectorAll(':scope > .empty').forEach(e => { if (/^No messages yet/.test(e.textContent)) e.remove(); });
+    const tm = new Map(); msgs.forEach(m => { if (otherId(m) === current) tm.set(String(m.id), +new Date(m.created_at)); });
+    const items = []; let next = Number.MAX_SAFE_INTEGER;
+    [...box.children].reverse().forEach(k => {
+      let t;
+      if (k.dataset && k.dataset.mid != null && tm.has(k.dataset.mid)){ t = tm.get(k.dataset.mid); next = t; }
+      else if (k.classList.contains('empty')) t = -1;
+      else t = next;                              /* reply / forwarded chips sit just above their bubble */
+      items.unshift({ k, t });
+    });
+    const bottom = box.scrollHeight - box.scrollTop - box.clientHeight < 6;
+    let j = 0;
+    calls.forEach(c => {
+      while (j < items.length && items[j].t <= c.t) j++;
+      const n = node(c);
+      if (j < items.length) box.insertBefore(n, items[j].k); else box.appendChild(n);
+    });
+    if (bottom && !jump) box.scrollTop = box.scrollHeight;
+  }
+  const _rm = renderMsgs;
+  renderMsgs = function(){ _rm(); try { paint(); } catch (e) { console.warn('[callchat]', e); } };
+
+  /* clearing a chat clears its call entries too */
+  const _cl = clearChat;
+  clearChat = async function(id){
+    const ok = await _cl(id);
+    if (ok){ try { save(load().filter(c => c.peer !== id)); } catch {} if (current === id && !curGroup) renderMsgs(); }
+    return ok;
+  };
+})();
+
+/* ===================== PART 2: Google sign-up page (replaces the pop-up boxes) ===================== */
+(function(){
+  const U = id => document.getElementById(id);
+  if (!ICONS.eye){
+    ICONS.eye = '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>';
+    ICONS['eye-off'] = '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/>';
+    const sp = document.querySelector('body > svg[aria-hidden]');
+    if (sp) ['eye', 'eye-off'].forEach(k => sp.insertAdjacentHTML('beforeend', '<symbol id="i-' + k + '" viewBox="0 0 24 24">' + ICONS[k] + '</symbol>'));
+  }
+
+  const rawFrom = sb.from.bind(sb);
+  const isGoogle = u => (u.app_metadata && u.app_metadata.provider === 'google') || (u.identities || []).some(i => i.provider === 'google');
+
+  function setupPage(user){
+    return new Promise((resolve, reject) => {
+      const kp = nacl.box.keyPair();
+      let checkT = 0, seq = 0, busy = false;
+
+      const uIn = el('input', { placeholder: 'Choose a username', autocapitalize: 'off', autocomplete: 'username', maxLength: 20, spellcheck: false });
+      const uHint = el('div', { className: 'gs-h', textContent: '3–20 letters, numbers or _' });
+      const pIn = el('input', { type: 'password', placeholder: 'At least 8 characters', autocomplete: 'new-password' });
+      const p2 = el('input', { type: 'password', placeholder: 'Repeat password', autocomplete: 'new-password' });
+      const mHint = el('div', { className: 'gs-h' });
+      const bars = el('div', { className: 'gs-bars' }, el('i'), el('i'), el('i'), el('i'));
+      const sLbl = el('div', { className: 'gs-sl' });
+      const err = el('div', { className: 'gs-err' });
+      const av = el('div', { className: 'gs-av' });
+      let shown = false;
+      const eye = el('button', { className: 'ghost gs-eye', type: 'button', textContent: '{{eye}}', onclick: () => {
+        shown = !shown; pIn.type = p2.type = shown ? 'text' : 'password'; eye.textContent = shown ? '{{eye-off}}' : '{{eye}}';
+      } });
+      eye.setAttribute('aria-label', 'Show or hide password');
+      const go = el('button', { className: 'wide', textContent: 'Create account', onclick: () => submit() });
+      const out = el('button', { className: 'ghost wide', textContent: 'Use a different account', onclick: () => cancel() });
+
+      const root = el('div', { id: 'gSetup' }, el('div', { className: 'gs' },
+        el('h1', { className: 'brand', textContent: 'Absol' }),
+        el('h2', { className: 'gs-t', textContent: 'Set up your account' }),
+        el('p', { className: 'gs-s', textContent: 'One last step. Pick a username people can find you by, and a password for logging in without Google.' }),
+        el('div', { className: 'gs-mail' }, el('div', { className: 'gs-ic', textContent: '{{check-circle}}' }),
+          el('div', {}, el('b', { textContent: 'Verified with Google' }), el('small', { textContent: user.email }))),
+        av,
+        el('div', { className: 'gs-card' }, el('div', { className: 'dlabel', textContent: 'Username' }), uIn, uHint),
+        el('div', { className: 'gs-card' }, el('div', { className: 'dlabel', textContent: 'Password' }),
+          el('div', { className: 'gs-pw' }, pIn, eye), bars, sLbl,
+          el('div', { className: 'dlabel', textContent: 'Repeat password', style: 'margin-top:6px' }), p2, mHint),
+        err, go,
+        el('div', { className: 'gs-note' }, el('span', { textContent: '{{lock}}' }),
+          el('span', { textContent: 'Messages are end-to-end encrypted. A private key is created on this device. You can back it up later in Settings.' })),
+        out));
+
+      const paintAv = () => av.replaceChildren(avatar(uIn.value || '?', 'big'));
+      const setU = (t, c) => { uHint.textContent = t; uHint.className = 'gs-h' + (c ? ' ' + c : ''); };
+      const re = /^[a-z0-9_]{3,20}$/;
+
+      async function check(){
+        const u = uIn.value, my = ++seq;
+        if (!re.test(u)) return setU(u ? 'Use 3–20 letters, numbers or _' : '3–20 letters, numbers or _', '');
+        setU('Checking…', '');
+        const { data, error } = await rawFrom('profiles').select('id').eq('username', u).maybeSingle();
+        if (my !== seq) return;
+        if (error) return setU('Could not check right now', 'bad');
+        setU(data ? 'That username is taken' : 'Username is available', data ? 'bad' : 'ok');
+      }
+      uIn.addEventListener('input', () => {
+        const v = uIn.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+        if (v !== uIn.value) uIn.value = v;
+        paintAv(); err.textContent = ''; clearTimeout(checkT); checkT = setTimeout(check, 350);
+      });
+
+      const LBL = ['', 'Weak', 'Okay', 'Good', 'Strong'];
+      function strength(){
+        const p = pIn.value; let s = 0;
+        if (p.length >= 8) s++; if (p.length >= 12) s++;
+        if (/[a-z]/.test(p) && /[A-Z]/.test(p)) s++;
+        if (/\d/.test(p) && /[^A-Za-z0-9]/.test(p)) s++;
+        if (!p) s = 0; else if (p.length < 8) s = 1;
+        [...bars.children].forEach((b, i) => b.classList.toggle('on', i < s));
+        sLbl.textContent = p ? LBL[Math.min(4, s)] : '';
+      }
+      function match(){
+        if (!p2.value){ mHint.textContent = ''; mHint.className = 'gs-h'; return; }
+        const ok = p2.value === pIn.value;
+        mHint.textContent = ok ? 'Passwords match' : 'Passwords don’t match'; mHint.className = 'gs-h ' + (ok ? 'ok' : 'bad');
+      }
+      pIn.addEventListener('input', () => { strength(); match(); err.textContent = ''; });
+      p2.addEventListener('input', () => { match(); err.textContent = ''; });
+      [uIn, pIn, p2].forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); }));
+
+      const close = () => root.remove();
+      async function cancel(){
+        if (busy) return;
+        try { await sb.auth.signOut(); } catch {}
+        close(); reject(new Error('Sign-up cancelled.'));
+      }
+      async function submit(){
+        if (busy) return;
+        const u = uIn.value, p = pIn.value; err.textContent = '';
+        if (!re.test(u)) return (err.textContent = 'Choose a username with 3–20 letters, numbers or _');
+        if (p.length < 8) return (err.textContent = 'Password must be at least 8 characters');
+        if (p !== p2.value) return (err.textContent = 'The passwords don’t match');
+        busy = true; go.disabled = out.disabled = true; go.textContent = 'Creating your account…';
+        try {
+          const t = await rawFrom('profiles').select('id').eq('username', u).maybeSingle();
+          if (t.error) throw t.error;
+          if (t.data){ setU('That username is taken', 'bad'); throw new Error('That username is taken. Choose another.'); }
+          const r1 = await sb.auth.updateUser({ password: p });
+          if (r1.error && !/different from the old/i.test(r1.error.message || '')) throw r1.error;
+          const r2 = await rawFrom('profiles').insert({ id: user.id, username: u, public_key: b64(kp.publicKey) });
+          if (r2.error) throw r2.error;
+          localStorage.setItem('sk:' + user.id, b64(kp.secretKey));
+          close(); resolve();
+        } catch (e) {
+          err.textContent = friendly(e);
+          busy = false; go.disabled = out.disabled = false; go.textContent = 'Create account';
+        }
+      }
+
+      paintAv(); document.body.appendChild(root);
+      setTimeout(() => uIn.focus(), 80);
+    });
+  }
+
+  /* runs once, right before the old pop-up boxes would appear */
+  let gateP = null;
+  function gate(uid){
+    if (gateP) return gateP;
+    const p = gateP = (async () => {
+      const { data: { session } } = await sb.auth.getSession();
+      const user = session && session.user;
+      if (!user || user.id !== uid || !isGoogle(user) || !user.email || !user.email_confirmed_at) return;
+      const { data: ex } = await rawFrom('profiles').select('id').eq('id', uid).maybeSingle();
+      if (ex) return;
+      await setupPage(user);
+    })();
+    const clear = () => { if (gateP === p) gateP = null; };
+    p.then(clear, clear);
+    return p;
+  }
+
+  /* the old code asks "does my profile exist?" first; we answer only after the new page is done */
+  sb.from = function(t){
+    const qb = rawFrom(t);
+    if (t !== 'profiles') return qb;
+    const sel = qb.select.bind(qb);
+    qb.select = function(...a){
+      const fb = sel(...a);
+      if (a[0] !== 'id') return fb;
+      const eq = fb.eq.bind(fb);
+      fb.eq = function(col, val){
+        const r = eq(col, val);
+        if (col !== 'id' || !val) return r;
+        const ms = r.maybeSingle.bind(r);
+        r.maybeSingle = () => gate(val).then(() => ms());
+        return r;
+      };
+      return fb;
+    };
+    return qb;
+  };
+})();
+</script>
+<!-- ===== END ABSOL: CALLS IN CHAT + GOOGLE SETUP PAGE ===== -->
 
 </body>
 </html>
