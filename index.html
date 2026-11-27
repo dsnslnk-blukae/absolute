@@ -5629,6 +5629,18 @@ googleBtn.addEventListener('click', async function () {
 })();
 </script>
 <!-- ===== END ABSOL GOOGLE AUTH PATCH ===== -->
+  <!-- ===== ABSOL GOOGLE-ONLY SIGNUP ===== -->
+<script>
+(function(){
+  const s = document.getElementById('signupBtn');
+  const row = s && s.closest('.auth-signup');
+  if (!row) return;
+  s.hidden = true; // keep it in the page, other code still references it
+  [...row.childNodes].forEach(n => { if (n.nodeType === 3) n.textContent = ''; });
+  row.prepend('New here? Use Continue with Google above to create an account.');
+})();
+</script>
+<!-- ===== END GOOGLE-ONLY SIGNUP ===== -->
 
 </body>
 </html>
