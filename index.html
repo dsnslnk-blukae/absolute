@@ -5384,7 +5384,75 @@ body.pblur #app,body.pblur dialog{filter:blur(26px)}
 })();
 </script>
 <!-- ===== END ABSOL SETTINGS PATCH 4 ===== -->
+<!-- ===== ABSOL RECOVERY PATCH ===== -->
+<script>
+(function(){
+  const SX = window.SX, RK = 'absol-recover';
+  const redirect = location.origin + location.pathname;
 
+  /* 1) Forgot password -> Google sign-in, remembered for 10 minutes */
+  document.getElementById('forgotPasswordBtn').onclick = () => {
+    localStorage.setItem(RK, String(Date.now()));
+    document.getElementById('googleLoginBtn').click();
+  };
+
+  /* 2) New-password dialog */
+  function newPw(){
+    return new Promise(res => {
+      const a = el('input', { type: 'password', placeholder: 'New password (8+ characters)', autocomplete: 'new-password', style: 'margin-top:8px' });
+      const b = el('input', { type: 'password', placeholder: 'Repeat new password', autocomplete: 'new-password', style: 'margin-top:8px' });
+      const msg = el('div', { className: 'hint', style: 'color:var(--danger);margin-top:8px' });
+      const go = el('button', { textContent: 'Save password', onclick: async () => {
+        if (a.value.length < 8) return (msg.textContent = 'At least 8 characters');
+        if (a.value !== b.value) return (msg.textContent = 'The passwords don’t match');
+        go.disabled = true;
+        const { error } = await sb.auth.updateUser({ password: a.value });
+        go.disabled = false;
+        if (error) return (msg.textContent = friendly(error));
+        d.close(); toast('Password changed');
+      } });
+      const d = el('dialog', {}, el('h2', { textContent: 'Set a new password' }),
+        el('p', { className: 'hint', textContent: 'You are signed in with Google. Choose a new password for username login.' }), a, b, msg,
+        el('div', { className: 'row', style: 'margin-top:12px' }, el('button', { className: 'ghost', textContent: 'Skip', onclick: () => d.close() }), go));
+      d.addEventListener('close', () => { d.remove(); res(); });
+      document.body.appendChild(d); d.showModal();
+    });
+  }
+
+  /* 3) After the Google return, ask for the new password before the app opens */
+  const prev = start;
+  start = async function(){
+    const t = +localStorage.getItem(RK) || 0;
+    if (t){
+      localStorage.removeItem(RK);
+      const { data: { session } } = await sb.auth.getSession();
+      const fresh = session && Date.now() - new Date(session.user.created_at) < 120000; /* brand-new Google account: it already chose a password */
+      if (session && !fresh && Date.now() - t < 600000) await newPw();
+    }
+    return prev();
+  };
+
+  /* 4) Account and security: link Google for username/password users */
+  if (SX && SX.hook) SX.hook('account', b => {
+    const right = el('span', { className: 'r', textContent: 'Checking…' }), row = srow('Google recovery', right);
+    b.append(el('div', { className: 'sec', textContent: 'Recovery' }), scard(row),
+      el('p', { className: 'hint', textContent: 'Link your Gmail so you can reset a forgotten password with Google. This does not recover old messages, so keep your key backed up.' }));
+    sb.auth.getUser().then(({ data }) => {
+      const g = ((data && data.user && data.user.identities) || []).find(i => i.provider === 'google');
+      if (g){ right.textContent = 'Linked' + ((g.identity_data || {}).email ? ' · ' + g.identity_data.email : ''); return; }
+      right.replaceWith(chipBtn('Link Google', async () => {
+        const { error } = await sb.auth.linkIdentity({ provider: 'google', options: { redirectTo: redirect } });
+        if (error) toast('Could not link: ' + friendly(error));
+      }));
+    });
+  });
+
+  /* 5) Friendly message if that Gmail already belongs to another account */
+  const q = new URLSearchParams(location.hash.slice(1) + '&' + location.search.slice(1)), ed = q.get('error_description');
+  if (ed) setTimeout(() => toast(/already|linked|exists/i.test(ed) ? 'That Gmail is already used by another Absol account' : ed), 1500);
+})();
+</script>
+<!-- ===== END RECOVERY PATCH ===== -->
 <!-- ===== ABSOL GOOGLE AUTH PATCH ===== -->
 <style>
   #googleLoginBtn {
