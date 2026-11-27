@@ -6956,431 +6956,728 @@ body.absol-audio-open {
 </script>
 <!-- ===== END ABSOL UNIVERSAL AUDIO EXPANSION ===== -->
 
-<!-- ======================================================
- ABSOL — MULTI-SELECT CONVERSATION TOOLBAR
- Paste at the end of index.html, before </body>
- Requires the previous ABSOL UI ENHANCEMENTS patch removed.
-====================================================== -->
+<!-- =========================================================
+ ABSOL — UNIFIED MULTI-SELECT + CHAT ACTIONS + REMINDERS
+ Replaces the old MULTI-SELECT TOOLBAR and TOOLBAR CORRECTION.
+ Uses the existing Absol theme and application functions.
+========================================================= -->
 
 <style>
+/* Selection header */
 #absSelectHead{
-  display:none;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  padding:10px 16px;
-  background:var(--surface);
-  border-bottom:1px solid var(--border);
+  display:none;align-items:center;justify-content:space-between;
+  gap:10px;padding:10px 14px;background:var(--surface);
+  border-bottom:1px solid var(--border)
 }
 #absSelectHead.on{display:flex}
-#absSelectHead .abs-count{
-  font-weight:700;
-  font-size:14px;
-}
+#absSelectHead .abs-count{font-size:13px;font-weight:700}
 #absSelectHead button{
-  padding:7px 12px;
-  border-radius:12px;
-  background:var(--surface2);
-  color:var(--accent2);
-  font-size:13px;
+  padding:7px 11px;border-radius:11px;background:var(--surface2);
+  color:var(--accent2);font-size:12px
 }
 .convo.abs-picked{
-  outline:2px solid var(--accent);
   background:color-mix(in srgb,var(--accent) 13%,var(--surface));
+  outline:1px solid color-mix(in srgb,var(--accent) 65%,var(--border));
+  outline-offset:-2px
 }
 .convo.abs-picked:after{
-  content:"✓";
-  display:grid;
-  place-items:center;
-  width:23px;
-  height:23px;
-  flex:none;
-  border-radius:50%;
-  background:var(--accent);
-  color:var(--accent-text);
-  font-size:13px;
-  font-weight:800;
+  content:"✓";display:grid;place-items:center;flex:none;
+  width:22px;height:22px;border-radius:50%;
+  background:var(--accent);color:var(--accent-text);
+  font-size:12px;font-weight:800
 }
+
+/* Floating action dock — independent of screen edges */
 #absActionDock{
-  position:fixed;
-  z-index:60;
-  left:0;
-  right:0;
-  bottom:0;
-  padding:10px 12px calc(12px + env(safe-area-inset-bottom,0px));
-  background:color-mix(in srgb,var(--surface) 94%,transparent);
-  border-top:1px solid var(--border);
-  backdrop-filter:blur(18px);
-  display:none;
+  display:none;position:fixed;z-index:80;
+  left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));
+  transform:translateX(-50%);
+  width:min(510px,calc(100vw - 28px));
+  padding:9px;background:color-mix(in srgb,var(--surface) 96%,transparent);
+  border:1px solid var(--border);border-radius:22px;
+  box-shadow:0 12px 36px rgba(0,0,0,.38);
+  backdrop-filter:blur(18px)
 }
 #absActionDock.on{display:block}
 #absActionStrip{
-  display:flex;
-  gap:9px;
-  overflow-x:auto;
-  overflow-y:hidden;
-  scroll-snap-type:x mandatory;
-  scrollbar-width:none;
-  -webkit-overflow-scrolling:touch;
-  overscroll-behavior-x:contain;
+  display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  scroll-snap-type:x mandatory;overscroll-behavior-x:contain
 }
 #absActionStrip::-webkit-scrollbar{display:none}
 .abs-action{
-  flex:0 0 calc((100% - 27px)/4);
-  min-width:0;
-  height:70px;
-  padding:8px 3px;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  gap:5px;
-  border:1px solid var(--border);
-  border-radius:17px;
-  background:var(--surface2);
-  color:var(--text);
-  scroll-snap-align:start;
-  white-space:nowrap;
-  overflow:hidden;
-  box-shadow:none;
+  flex:0 0 calc((100% - 24px)/4);min-width:0;height:66px;
+  padding:7px 3px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:5px;
+  border:1px solid var(--border);border-radius:16px;
+  background:var(--surface2);color:var(--text);
+  box-shadow:none;scroll-snap-align:start;overflow:hidden
 }
 .abs-action:active{transform:scale(.97)}
 .abs-action .abs-ico{
-  font-size:19px;
-  line-height:1;
-  height:22px;
-  display:grid;
-  place-items:center;
+  width:21px;height:21px;display:grid;place-items:center;
+  font-size:19px;line-height:1
+}
+.abs-action .abs-ico svg{
+  width:19px;height:19px;fill:none;stroke:currentColor;
+  stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round
 }
 .abs-action .abs-label{
-  display:block;
-  width:100%;
-  overflow:hidden;
-  text-overflow:clip;
-  white-space:nowrap;
-  text-align:center;
-  font-size:11px;
-  line-height:1.2;
-  font-weight:700;
+  display:block;width:100%;font-size:10.5px;line-height:1.2;
+  font-weight:700;text-align:center;white-space:nowrap
 }
-.abs-action.danger{color:var(--danger)}
 .abs-action.primary{
   background:color-mix(in srgb,var(--accent) 17%,var(--surface2));
-  border-color:color-mix(in srgb,var(--accent) 45%,var(--border));
+  border-color:color-mix(in srgb,var(--accent) 42%,var(--border))
 }
-.abs-action.more{
-  border-style:dashed;
-  color:var(--accent2);
-}
+.abs-action.danger{color:var(--danger)}
 #absActionHint{
-  text-align:center;
-  color:var(--muted);
-  font-size:10px;
-  padding-top:7px;
+  text-align:center;color:var(--muted);font-size:10px;
+  padding-top:7px
 }
+
+/* Absol-themed action dialogs */
+.abs-dialog{
+  width:min(92vw,390px);max-height:82vh;overflow:auto;
+  padding:18px;background:var(--surface);
+  border:1px solid var(--border);border-radius:20px;
+  color:var(--text);box-shadow:0 18px 50px rgba(0,0,0,.45)
+}
+.abs-dialog h2{font-size:17px;margin:0 0 5px}
+.abs-dialog .abs-sub{font-size:12px;color:var(--muted);margin:0 0 14px}
+.abs-dialog .abs-options{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px
+}
+.abs-dialog .abs-option{
+  min-width:0;padding:11px 5px;border:1px solid var(--border);
+  border-radius:13px;background:var(--surface2);
+  color:var(--text);font-size:12px;font-weight:700
+}
+.abs-dialog .abs-option small{
+  display:block;color:var(--muted);font-size:10px;font-weight:500;
+  margin-top:3px
+}
+.abs-dialog .abs-option.custom{
+  grid-column:span 3;background:color-mix(in srgb,var(--accent) 13%,var(--surface2));
+  border-color:color-mix(in srgb,var(--accent) 42%,var(--border))
+}
+.abs-dialog input[type="datetime-local"]{
+  display:block;margin:10px 0 12px;width:100%;
+  min-width:0;padding:11px;border:1px solid var(--border);
+  border-radius:12px;background:var(--bg);color:var(--text);
+  color-scheme:dark
+}
+.abs-dialog .abs-dialog-actions{
+  display:flex;gap:8px;margin-top:14px
+}
+.abs-dialog .abs-dialog-actions button{flex:1}
+.abs-dialog button.ghost{
+  background:var(--surface2);color:var(--accent2)
+}
+.abs-dialog .abs-reminder-row{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:10px;padding:10px 0;border-bottom:1px solid var(--border);
+  font-size:12px
+}
+.abs-dialog .abs-reminder-row button{
+  padding:6px 9px;background:var(--surface2);
+  color:var(--danger);font-size:11px
+}
+.abs-dialog .abs-group-row{
+  display:flex;align-items:center;gap:10px;
+  padding:11px 4px;border-bottom:1px solid var(--border);
+  font-size:13px
+}
+.abs-dialog .abs-group-row input{width:17px;height:17px;accent-color:var(--accent)}
+.abs-dialog .abs-empty{padding:16px 4px;color:var(--muted);font-size:12px}
+.abs-dialog .abs-center{display:flex;justify-content:center;margin-top:14px}
+.abs-dialog .abs-center button{min-width:130px}
 </style>
 
 <script>
 (function(){
-  if(window.__absolMultiSelect) return;
-  window.__absolMultiSelect = true;
+  'use strict';
+  if(window.__absolUnifiedActions) return;
+  window.__absolUnifiedActions = true;
 
   const list = document.getElementById('convos');
   if(!list) return;
 
   let selected = new Map();
-  let longPressTimer = null;
-  let startX = 0, startY = 0, longPressed = false;
-  let lastLongPress = 0;
+  let pressTimer = null;
+  let pressPoint = null;
+  let suppressClickUntil = 0;
+  let reminderTimers = new Map();
+  let activeUser = null;
+  let reminderDialog = null;
+  let groupDialog = null;
+
+  const icon = {
+    remind:'<svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>',
+    delete:'<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>',
+    pin:'<svg viewBox="0 0 24 24"><path d="m16 3 5 5-4 1-4 4v4l-2 2-2-6-6-2 2-2h4l4-4zM5 19l-2 2"/></svg>',
+    mute:'<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4zM16 9l5 6M21 9l-5 6"/></svg>',
+    read:'<svg viewBox="0 0 24 24"><path d="m3 12 5 5L20 5M11 17l2 2 8-9"/></svg>',
+    favourite:'<svg viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9z"/></svg>',
+    group:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M17 5a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 4v2"/></svg>'
+  };
 
   const head = document.createElement('div');
   head.id = 'absSelectHead';
   head.innerHTML =
     '<span class="abs-count">0 selected</span>' +
     '<div style="display:flex;gap:7px">' +
-      '<button type="button" data-abs="all">Select all</button>' +
-      '<button type="button" data-abs="close">Cancel</button>' +
-    '</div>';
+    '<button type="button" data-abs="all">Select all</button>' +
+    '<button type="button" data-abs="close">Cancel</button></div>';
 
   const dock = document.createElement('div');
   dock.id = 'absActionDock';
   dock.innerHTML =
     '<div id="absActionStrip">' +
-      '<button class="abs-action primary" data-action="remind"><span class="abs-ico">◷</span><span class="abs-label">Remind</span></button>' +
-      '<button class="abs-action danger" data-action="delete"><span class="abs-ico">⌫</span><span class="abs-label">Delete</span></button>' +
-      '<button class="abs-action" data-action="pin"><span class="abs-ico">⌖</span><span class="abs-label">Pin</span></button>' +
-      '<button class="abs-action more" data-action="more"><span class="abs-ico">•••</span><span class="abs-label">More</span></button>' +
-      '<button class="abs-action" data-action="mute"><span class="abs-ico">♩</span><span class="abs-label">Mute</span></button>' +
-      '<button class="abs-action" data-action="read"><span class="abs-ico">✓✓</span><span class="abs-label">Mark read</span></button>' +
-      '<button class="abs-action" data-action="favourite"><span class="abs-ico">☆</span><span class="abs-label">Favourite</span></button>' +
-      '<button class="abs-action" data-action="group"><span class="abs-ico">♧</span><span class="abs-label">Add to group</span></button>' +
-    '</div>' +
-    '<div id="absActionHint">Swipe left to see more actions</div>';
+    action('remind','Remind','primary') +
+    action('delete','Delete','danger') +
+    action('pin','Pin','') +
+    action('mute','Mute','') +
+    action('read','Mark read','') +
+    action('favourite','Favourite','') +
+    action('group','Add to group','') +
+    '</div><div id="absActionHint">Swipe to see more actions</div>';
+
+  function action(id,label,cls){
+    return '<button type="button" class="abs-action '+cls+'" data-action="'+id+'">' +
+      '<span class="abs-ico">'+icon[id]+'</span>' +
+      '<span class="abs-label">'+label+'</span></button>';
+  }
 
   list.parentElement.insertBefore(head,list);
   document.body.appendChild(dock);
 
-  function getRows(){
-    return [...list.querySelectorAll(':scope > .convo')];
-  }
-
   function describeRows(){
     const last = {}, items = [];
-
     msgs.filter(visible).forEach(m => last[otherId(m)] = m);
 
     Object.keys(last).forEach(id => items.push({
-      key:'dm:'+id, kind:'dm', id
+      key:'dm:'+id,kind:'dm',id
     }));
-
     Object.keys(groups).forEach(id => items.push({
-      key:'group:'+id, kind:'group', id
+      key:'group:'+id,kind:'group',id
     }));
 
+    const time = x => {
+      const m = x.kind==='dm' ? last[x.id] : lastGroupMsg(x.id);
+      return m ? +new Date(m.created_at) : +(new Date(groups[x.id]?.created_at || 0));
+    };
     items.sort((a,b) => {
-      const favA = a.kind==='dm' ? (st(a.id).favorite?1:0) : ((gset[a.id]||{}).favorite?1:0);
-      const favB = b.kind==='dm' ? (st(b.id).favorite?1:0) : ((gset[b.id]||{}).favorite?1:0);
+      const pinA = a.kind==='dm' ? !!st(a.id).pinned : !!gset[a.id]?.pinned;
+      const pinB = b.kind==='dm' ? !!st(b.id).pinned : !!gset[b.id]?.pinned;
+      if(pinA!==pinB) return pinB-pinA;
+      const favA = a.kind==='dm' ? !!st(a.id).favorite : !!gset[a.id]?.favorite;
+      const favB = b.kind==='dm' ? !!st(b.id).favorite : !!gset[b.id]?.favorite;
       if(favA!==favB) return favB-favA;
-
-      const time = x => {
-        const m = x.kind==='dm'
-          ? last[x.id]
-          : lastGroupMsg(x.id);
-        return m ? +new Date(m.created_at) : 0;
-      };
       return time(b)-time(a);
     });
-
     return items;
   }
 
   function update(){
-    const rows = getRows();
+    const rows = [...list.querySelectorAll(':scope > .convo')];
     const items = describeRows();
-
-    rows.forEach((row,i) => {
-      const item = items[i];
-      if(!item) return;
-      row.classList.toggle('abs-picked',selected.has(item.key));
+    rows.forEach((row,i)=>{
+      const item=items[i];
+      row.classList.toggle('abs-picked',!!item && selected.has(item.key));
     });
-
-    const count = selected.size;
+    const count=selected.size;
     head.classList.toggle('on',count>0);
     dock.classList.toggle('on',count>0);
-    head.querySelector('.abs-count').textContent = count + ' selected';
-
-    const all = head.querySelector('[data-abs="all"]');
-    all.textContent = count===items.length ? 'Deselect all' : 'Select all';
+    head.querySelector('.abs-count').textContent=count+' selected';
+    head.querySelector('[data-abs="all"]').textContent=
+      count===items.length && items.length ? 'Deselect all':'Select all';
   }
 
   function enter(item){
-    if(!selected.size) selected.set(item.key,item);
+    if(!item) return;
+    selected.set(item.key,item);
     update();
-    if(navigator.vibrate) navigator.vibrate(15);
+    if(navigator.vibrate) navigator.vibrate(14);
   }
-
   function toggle(item){
+    if(!item) return;
     if(selected.has(item.key)) selected.delete(item.key);
     else selected.set(item.key,item);
-
-    if(!selected.size){
-      update();
-      return;
-    }
     update();
   }
-
   function exit(){
     selected.clear();
     update();
-    document.getElementById('absActionStrip').scrollLeft=0;
+    const strip=document.getElementById('absActionStrip');
+    if(strip) strip.scrollLeft=0;
   }
-
-  function itemForRow(row,index){
+  function itemForRow(row){
+    const index=[...list.querySelectorAll(':scope > .convo')].indexOf(row);
     return describeRows()[index] || null;
   }
 
-  function findRowItem(row){
-    const index=getRows().indexOf(row);
-    return itemForRow(row,index);
-  }
-
-  /* Long press enters selection mode. */
+  /* Long press to select on touch devices */
   list.addEventListener('touchstart',e=>{
     const row=e.target.closest('.convo');
     if(!row) return;
-
-    const touch=e.touches[0];
-    startX=touch.clientX;
-    startY=touch.clientY;
-    longPressed=false;
-    clearTimeout(longPressTimer);
-
-    const item=findRowItem(row);
+    const t=e.touches[0];
+    pressPoint={x:t.clientX,y:t.clientY};
+    clearTimeout(pressTimer);
+    const item=itemForRow(row);
     if(!item) return;
-
-    longPressTimer=setTimeout(()=>{
-      longPressed=true;
-      lastLongPress=Date.now();
-      if(!selected.size) enter(item);
-      else toggle(item);
+    pressTimer=setTimeout(()=>{
+      pressTimer=null;
+      suppressClickUntil=Date.now()+750;
+      if(selected.size) toggle(item);
+      else enter(item);
     },480);
   },{passive:true});
 
   list.addEventListener('touchmove',e=>{
-    if(!longPressTimer) return;
+    if(!pressTimer || !pressPoint) return;
     const t=e.touches[0];
-    if(Math.abs(t.clientX-startX)>10 || Math.abs(t.clientY-startY)>10){
-      clearTimeout(longPressTimer);
-      longPressTimer=null;
+    if(Math.abs(t.clientX-pressPoint.x)>12 ||
+       Math.abs(t.clientY-pressPoint.y)>12){
+      clearTimeout(pressTimer);pressTimer=null;
     }
   },{passive:true});
 
-  ['touchend','touchcancel'].forEach(name=>{
-    list.addEventListener(name,()=>{
-      clearTimeout(longPressTimer);
-      longPressTimer=null;
+  ['touchend','touchcancel'].forEach(type=>{
+    list.addEventListener(type,()=>{
+      clearTimeout(pressTimer);pressTimer=null;pressPoint=null;
     },{passive:true});
   });
 
+  /* Desktop right-click selection */
   list.addEventListener('contextmenu',e=>{
     const row=e.target.closest('.convo');
     if(!row) return;
     e.preventDefault();
-
-    if(Date.now()-lastLongPress<700) return;
-
-    const item=findRowItem(row);
-    if(!item) return;
-
-    if(!selected.size) enter(item);
-    else toggle(item);
-    lastLongPress=Date.now();
+    if(Date.now()<suppressClickUntil) return;
+    const item=itemForRow(row);
+    if(selected.size) toggle(item);
+    else enter(item);
+    suppressClickUntil=Date.now()+500;
   });
 
-  /* Tap additional rows while selection mode is active. */
+  /* Tap rows while selection mode is active */
   list.addEventListener('click',e=>{
     const row=e.target.closest('.convo');
-    if(!row || !selected.size) return;
-
-    if(Date.now()-lastLongPress<700){
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      return;
+    if(!row) return;
+    if(Date.now()<suppressClickUntil){
+      e.preventDefault();e.stopImmediatePropagation();return;
     }
-
-    const item=findRowItem(row);
+    if(!selected.size) return;
+    const item=itemForRow(row);
     if(!item) return;
-
-    e.preventDefault();
-    e.stopImmediatePropagation();
+    e.preventDefault();e.stopImmediatePropagation();
     toggle(item);
   },true);
 
   head.addEventListener('click',e=>{
-    const action=e.target.closest('[data-abs]');
-    if(!action) return;
-
-    if(action.dataset.abs==='close') return exit();
-
+    const b=e.target.closest('[data-abs]');
+    if(!b) return;
+    if(b.dataset.abs==='close'){exit();return;}
     const items=describeRows();
     if(selected.size===items.length) selected.clear();
-    else {
-      selected.clear();
-      items.forEach(item=>selected.set(item.key,item));
-    }
+    else {selected.clear();items.forEach(x=>selected.set(x.key,x));}
     update();
   });
 
-  /* The strip is horizontally scrollable. The first four cards
-     are visible initially; the remaining cards are revealed by swiping. */
-  dock.addEventListener('click',e=>{
-    const button=e.target.closest('[data-action]');
-    if(!button) return;
-
-    const action=button.dataset.action;
-
-    if(action==='more'){
-      const strip=document.getElementById('absActionStrip');
-      strip.scrollBy({left:strip.clientWidth,behavior:'smooth'});
-      return;
-    }
-
-    if(action==='remind'){
-      toast('Reminder scheduling will be added next.');
-      return;
-    }
-
-    if(action==='delete'){
-      toast('Delete action will be connected after its safe deletion behaviour is confirmed.');
-      return;
-    }
-
-    if(action==='pin'){
-      toast('Pin action will be connected to the existing chat settings next.');
-      return;
-    }
-
-    if(action==='mute'||action==='read'||action==='favourite'||action==='group'){
-      toast('Additional action will be connected in the next stage.');
-    }
-  });
-
+  /* Keep selection styling in sync when the app redraws its list */
   const originalRenderList=renderList;
   renderList=function(){
     originalRenderList();
     if(selected.size) update();
   };
 
-  console.log('[Absol] Multi-select toolbar loaded.');
-})();
-</script>
-<!-- ============== END ABSOL MULTI-SELECT TOOLBAR ============== -->
+  function selectedItems(){return [...selected.values()];}
+  function selectedDMs(){return selectedItems().filter(x=>x.kind==='dm');}
+  function selectedGroups(){return selectedItems().filter(x=>x.kind==='group');}
 
-<!-- ABSOL TOOLBAR CORRECTION -->
-<script>
-(function(){
-  const strip = document.getElementById('absActionStrip');
-  if (!strip) return;
+  /* ---------- Reminder storage and scheduling ---------- */
+  function reminderKey(){
+    return me ? 'absol-reminders:'+me.id : null;
+  }
+  function loadReminders(){
+    try{return JSON.parse(localStorage.getItem(reminderKey())||'[]');}
+    catch{return [];}
+  }
+  function saveReminders(items){
+    if(!reminderKey()) return;
+    localStorage.setItem(reminderKey(),JSON.stringify(items));
+  }
+  function localDateValue(d){
+    const pad=n=>String(n).padStart(2,'0');
+    return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+
+      'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+  }
+  function nextMidnight(){
+    const d=new Date();d.setHours(24,0,0,0);return d;
+  }
+  function reminderLabel(r){
+    return r.kind==='group' ? (groups[r.id]?.name||'Group') : dname(r.id);
+  }
+  function scheduleOne(r){
+    if(!me || r.user!==me.id) return;
+    const old=reminderTimers.get(r.rid);
+    if(old) clearTimeout(old);
 
-  // Remove the More card entirely.
-  strip.querySelector('[data-action="more"]')?.remove();
-
-  // Make Mute the fourth initial action.
-  const mute = strip.querySelector('[data-action="mute"]');
-  if (mute) {
-    const firstFour = [...strip.children].slice(0, 4);
-    if (firstFour.includes(mute)) {
-      strip.insertBefore(mute, firstFour[3].nextSibling);
-    } else {
-      strip.insertBefore(mute, strip.children[3] || null);
+    const wait=r.at-Date.now();
+    if(wait<=0){fireReminder(r);return;}
+    const timer=setTimeout(()=>{
+      if(Date.now()<r.at){scheduleOne(r);return;}
+      fireReminder(r);
+    },Math.min(wait,2147480000));
+    reminderTimers.set(r.rid,timer);
+  }
+  function fireReminder(r){
+    reminderTimers.delete(r.rid);
+    const items=loadReminders().filter(x=>x.rid!==r.rid);
+    saveReminders(items);
+    const title='Absol reminder';
+    const body='Remember to check '+reminderLabel(r);
+    if('Notification' in window && Notification.permission==='granted'){
+      try{
+        const n=new Notification(title,{body,tag:r.rid,data:{kind:r.kind,id:r.id}});
+        n.onclick=()=>{
+          window.focus();
+          if(r.kind==='group') openGroup(r.id);
+          else openChat(r.id);
+          n.close();
+        };
+      }catch{toast(body);}
+    }else{
+      toast(body);
     }
   }
-
-  // Remove the misleading placeholder action messages.
-  strip.querySelectorAll('[data-action]').forEach(button => {
-    button.addEventListener('click', function(e){
-      if (['remind','delete','pin','mute','read','favourite','group'].includes(this.dataset.action)) {
-        e.stopImmediatePropagation();
-      }
-    }, true);
-  });
-
-  // Always begin at the first card when selection starts.
-  const dock = document.getElementById('absActionDock');
-  if (dock) {
-    new MutationObserver(() => {
-      if (dock.classList.contains('on') && strip.scrollLeft !== 0) {
-        strip.scrollLeft = 0;
-      }
-    }).observe(dock, {attributes:true, attributeFilter:['class']});
+  function restoreReminders(){
+    if(!me) return;
+    const items=loadReminders();
+    const keep=[];
+    items.forEach(r=>{
+      if(r.user!==me.id) return;
+      if(r.at<=Date.now()) return;
+      keep.push(r);scheduleOne(r);
+    });
+    saveReminders(keep);
+  }
+  async function askNotificationPermission(){
+    if(!('Notification' in window)){
+      toast('Notifications are not supported in this browser');
+      return false;
+    }
+    if(Notification.permission==='granted') return true;
+    if(Notification.permission==='denied'){
+      toast('Allow notifications for Absol in your browser settings');
+      return false;
+    }
+    const result=await Notification.requestPermission();
+    return result==='granted';
+  }
+  function addReminder(items,at){
+    if(!me || !Number.isFinite(at) || at<=Date.now()){
+      toast('Choose a future date and time');return;
+    }
+    const records=loadReminders();
+    items.forEach(item=>{
+      records.push({
+        rid:'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,8),
+        user:me.id,kind:item.kind,id:item.id,at
+      });
+    });
+    saveReminders(records);
+    records.filter(r=>r.at===at && items.some(x=>x.kind===r.kind&&x.id===r.id))
+      .forEach(scheduleOne);
+    exit();
+    toast('Reminder saved');
   }
 
-  const hint = document.getElementById('absActionHint');
-  if (hint) hint.textContent = 'Swipe left to see more actions';
+  function makeDialog(title,sub){
+    const d=document.createElement('dialog');
+    d.className='abs-dialog';
+    d.innerHTML='<h2></h2><p class="abs-sub"></p><div class="abs-dialog-body"></div>';
+    d.querySelector('h2').textContent=title;
+    d.querySelector('.abs-sub').textContent=sub;
+    document.body.appendChild(d);
+    d.addEventListener('close',()=>d.remove(),{once:true});
+    d.showModal();
+    return d;
+  }
+  function closeDialog(d){if(d?.open)d.close();}
+
+  function openReminderDialog(){
+    if(!me || !selected.size) return;
+    const items=selectedItems();
+    const d=makeDialog('Remind me','Choose when Absol should remind you about these chats.');
+    reminderDialog=d;
+    const body=d.querySelector('.abs-dialog-body');
+    const grid=document.createElement('div');grid.className='abs-options';
+    const presets=[
+      ['5 minutes',5*60000,'5 min'],
+      ['15 minutes',15*60000,'15 min'],
+      ['30 minutes',30*60000,'30 min'],
+      ['1 hour',3600000,'1 hour'],
+      ['3 hours',3*3600000,'3 hours'],
+      ['4 hours',4*3600000,'4 hours']
+    ];
+    presets.forEach(([label,ms,small])=>{
+      const b=document.createElement('button');
+      b.className='abs-option';
+      b.innerHTML=label+'<small>'+small+'</small>';
+      b.onclick=async()=>{
+        await askNotificationPermission();
+        addReminder(items,Date.now()+ms);
+        closeDialog(d);
+      };
+      grid.appendChild(b);
+    });
+    const midnight=document.createElement('button');
+    midnight.className='abs-option';
+    midnight.innerHTML='Midnight<small>Tonight</small>';
+    midnight.onclick=async()=>{
+      await askNotificationPermission();
+      addReminder(items,+nextMidnight());
+      closeDialog(d);
+    };
+    grid.appendChild(midnight);
+
+    const tomorrow=document.createElement('button');
+    tomorrow.className='abs-option';
+    tomorrow.innerHTML='Tomorrow<small>Same time</small>';
+    tomorrow.onclick=async()=>{
+      await askNotificationPermission();
+      addReminder(items,Date.now()+24*3600000);
+      closeDialog(d);
+    };
+    grid.appendChild(tomorrow);
+
+    const custom=document.createElement('button');
+    custom.className='abs-option custom';
+    custom.textContent='Choose custom date & time';
+    custom.onclick=()=>{
+      grid.hidden=true;
+      customForm.hidden=false;
+    };
+    grid.appendChild(custom);
+
+    const customForm=document.createElement('div');
+    customForm.hidden=true;
+    const date=document.createElement('input');
+    date.type='datetime-local';
+    date.min=localDateValue(new Date(Date.now()+60000));
+    date.value=localDateValue(new Date(Date.now()+3600000));
+    const note=document.createElement('p');
+    note.className='abs-sub';
+    note.textContent='Select a future date and time on your device.';
+    const actions=document.createElement('div');
+    actions.className='abs-dialog-actions';
+    const back=document.createElement('button');
+    back.className='ghost';back.textContent='Back';
+    back.onclick=()=>{customForm.hidden=true;grid.hidden=false;};
+    const save=document.createElement('button');
+    save.textContent='Set reminder';
+    save.onclick=async()=>{
+      const at=new Date(date.value).getTime();
+      if(!date.value || !Number.isFinite(at) || at<=Date.now()){
+        toast('Choose a future date and time');return;
+      }
+      await askNotificationPermission();
+      addReminder(items,at);
+      closeDialog(d);
+    };
+    actions.append(back,save);
+    customForm.append(date,note,actions);
+    body.append(grid,customForm);
+
+    const existing=loadReminders();
+    const mine=existing.filter(r=>items.some(x=>x.kind===r.kind&&x.id===r.id));
+    if(mine.length){
+      const title=document.createElement('p');
+      title.className='abs-sub';title.style.marginTop='16px';
+      title.textContent='Existing reminders';
+      body.appendChild(title);
+      mine.forEach(r=>{
+        const row=document.createElement('div');row.className='abs-reminder-row';
+        const label=document.createElement('span');
+        label.textContent=reminderLabel(r)+' · '+new Date(r.at).toLocaleString();
+        const cancel=document.createElement('button');
+        cancel.textContent='Cancel';
+        cancel.onclick=()=>{
+          const t=reminderTimers.get(r.rid);if(t)clearTimeout(t);
+          reminderTimers.delete(r.rid);
+          saveReminders(loadReminders().filter(x=>x.rid!==r.rid));
+          row.remove();
+          toast('Reminder cancelled');
+        };
+        row.append(label,cancel);body.appendChild(row);
+      });
+    }
+    const close=document.createElement('div');close.className='abs-dialog-actions';
+    const cancel=document.createElement('button');cancel.className='ghost';
+    cancel.textContent='Close';cancel.onclick=()=>closeDialog(d);
+    close.appendChild(cancel);body.appendChild(close);
+  }
+
+  /* ---------- Pin / mute / favourite ---------- */
+  function pinnedCount(){
+    return Object.keys(settings).filter(id=>settings[id]?.pinned).length+
+      Object.keys(gset).filter(id=>gset[id]?.pinned&&groups[id]).length;
+  }
+  async function setSelectedField(field){
+    const items=selectedItems();
+    const anyOff=items.some(x=>!(x.kind==='dm'?st(x.id)[field]:gset[x.id]?.[field]));
+    const value=anyOff;
+    if(field==='pinned' && value){
+      const adding=items.filter(x=>!(x.kind==='dm'?st(x.id).pinned:gset[x.id]?.pinned)).length;
+      if(pinnedCount()+adding>3){
+        toast('You can pin up to 3 chats');return;
+      }
+    }
+    for(const x of items){
+      const ok=x.kind==='dm'
+        ? await setSetting(x.id,{[field]:value})
+        : await setGSetting(x.id,{[field]:value});
+      if(!ok) return;
+    }
+    renderList();update();
+    toast(field==='pinned'?(value?'Chats pinned':'Chats unpinned'):
+      field==='muted'?(value?'Chats muted':'Chats unmuted'):
+      (value?'Added to favourites':'Removed from favourites'));
+  }
+
+  /* ---------- Delete selected chats ---------- */
+  async function deleteSelected(){
+    const items=selectedItems();
+    if(!items.length) return;
+    if(!confirm('Remove '+items.length+' selected chat(s) from your chat list on this device?')) return;
+    const stamp=new Date().toISOString();
+    for(const x of items){
+      let ok;
+      if(x.kind==='dm'){
+        let mx=0;
+        msgs.forEach(m=>{
+          if(otherId(m)===x.id&&!m.pending)
+            mx=Math.max(mx,+new Date(m.created_at));
+        });
+        ok=await setSetting(x.id,{
+          deleted_before:mx?new Date(mx+1).toISOString():stamp
+        });
+      }else{
+        let mx=0;
+        gmsgs.forEach(m=>{
+          if(m.group_id===x.id&&!m.pending)
+            mx=Math.max(mx,+new Date(m.created_at));
+        });
+        ok=await setGSetting(x.id,{
+          cleared_before:mx?new Date(mx+1).toISOString():stamp
+        });
+      }
+      if(!ok) return;
+    }
+    exit();renderList();toast('Selected chats removed from your list');
+  }
+
+  /* ---------- Mark selected chats read ---------- */
+  async function markSelectedRead(){
+    for(const x of selectedItems()){
+      if(x.kind==='dm'){
+        const {error}=await sb.rpc('mark_chat',{p_peer:x.id,p_read:true});
+        if(error){toast(friendly(error));return;}
+      }else{
+        /* Existing group-read logic is kept as the source of truth. */
+        openGroup(x.id);
+        goList();
+      }
+    }
+    exit();renderList();toast('Read status updated');
+  }
+
+  /* ---------- Add selected direct chats to a group ---------- */
+  function openGroupPicker(){
+    const d=makeDialog('Add to group','Choose a group to add the selected contacts to.');
+    groupDialog=d;
+    const body=d.querySelector('.abs-dialog-body');
+    const direct=selectedDMs();
+    if(!direct.length){
+      body.innerHTML='<div class="abs-empty">Select one or more direct chats first.</div>';
+    }else{
+      const choices=Object.values(groups);
+      if(!choices.length){
+        body.innerHTML='<div class="abs-empty">You haven’t created a group yet.</div>';
+      }else{
+        choices.forEach(g=>{
+          const row=document.createElement('label');row.className='abs-group-row';
+          const cb=document.createElement('input');cb.type='checkbox';cb.value=g.id;
+          const text=document.createElement('span');
+          text.textContent=g.name+' · '+(gmembers[g.id]||[]).length+' members';
+          if(!isAdminOf(g.id)) cb.disabled=true;
+          row.append(cb,text);body.appendChild(row);
+        });
+        const hint=document.createElement('p');hint.className='abs-sub';
+        hint.textContent='Only groups where you are an admin can be changed.';
+        body.appendChild(hint);
+        const center=document.createElement('div');center.className='abs-center';
+        const add=document.createElement('button');add.textContent='Add members';
+        add.onclick=async()=>{
+          const gids=[...body.querySelectorAll('input[type=checkbox]:checked')].map(x=>x.value);
+          if(!gids.length){toast('Choose a group first');return;}
+          const ids=direct.map(x=>x.id);
+          for(const gid of gids){
+            const existing=new Set((gmembers[gid]||[]).map(m=>m.user_id));
+            const fresh=ids.filter(id=>!existing.has(id));
+            if(!fresh.length) continue;
+            if((gmembers[gid]||[]).length+fresh.length>50){
+              toast('A group can have at most 50 members');return;
+            }
+            if(!await changeMembers(gid,fresh,[])) return;
+          }
+          closeDialog(d);exit();renderList();toast('Group membership updated');
+        };
+        center.appendChild(add);body.appendChild(center);
+      }
+    }
+    const actions=document.createElement('div');actions.className='abs-dialog-actions';
+    const cancel=document.createElement('button');cancel.className='ghost';
+    cancel.textContent='Close';cancel.onclick=()=>closeDialog(d);
+    actions.appendChild(cancel);body.appendChild(actions);
+  }
+
+  /* ---------- Action routing ---------- */
+  dock.addEventListener('click',async e=>{
+    const b=e.target.closest('[data-action]');
+    if(!b || !selected.size) return;
+    if(b.dataset.action==='remind') return openReminderDialog();
+    if(b.dataset.action==='delete') return deleteSelected();
+    if(b.dataset.action==='pin') return setSelectedField('pinned');
+    if(b.dataset.action==='mute') return setSelectedField('muted');
+    if(b.dataset.action==='favourite') return setSelectedField('favorite');
+    if(b.dataset.action==='read') return markSelectedRead();
+    if(b.dataset.action==='group') return openGroupPicker();
+  });
+
+  /* ---------- Account-aware reminder restoration ---------- */
+  function accountCheck(){
+    const uid=me?.id||null;
+    if(uid===activeUser) return;
+    reminderTimers.forEach(t=>clearTimeout(t));
+    reminderTimers.clear();
+    activeUser=uid;
+    if(uid) restoreReminders();
+    else exit();
+  }
+  accountCheck();
+  setInterval(accountCheck,1200);
+
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden && me) restoreReminders();
+  });
+
+  console.log('[Absol] Unified multi-select actions ready.');
 })();
 </script>
-<!-- END ABSOL TOOLBAR CORRECTION -->
+<!-- ============== END ABSOL UNIFIED ACTIONS ============== -->
 
 </body>
 </html>
