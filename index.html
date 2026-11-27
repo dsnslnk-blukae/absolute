@@ -8224,5 +8224,56 @@ body.absol-audio-open {
 })();
 </script>
 <!-- ===== END ABSOL FIX ===== -->
+  <!-- ===== ABSOL FIX: Drive restore without passphrase ===== -->
+<style>
+#driveDlg input{display:none}
+</style>
+<script>
+(function(){
+  const OP = 'absol-drive-op', API = 'https://www.googleapis.com';
+  const SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+  const origAsk = askRestore;
+
+  async function driveKey(tok, prof){
+    const H = { Authorization: 'Bearer ' + tok };
+    const q = encodeURIComponent("name='absol-key-" + prof.id + ".json' and 'appDataFolder' in parents");
+    let r = await fetch(API + '/drive/v3/files?spaces=appDataFolder&fields=files(id)&q=' + q, { headers: H });
+    if (!r.ok) return null;
+    const f = ((await r.json()).files || [])[0]; if (!f) return null;
+    r = await fetch(API + '/drive/v3/files/' + f.id + '?alt=media', { headers: H });
+    if (!r.ok) return null;
+    const o = JSON.parse(await r.text());
+    if (o.mode !== 'plain' || !o.sk) return null;      /* old passphrase backups use the normal flow */
+    const sk = unb64(o.sk);
+    return b64(nacl.box.keyPair.fromSecretKey(sk).publicKey) === prof.public_key ? sk : null;
+  }
+
+  askRestore = async function(prof){
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const user = session && session.user;
+      const linked = user && (user.identities || []).some(i => i.provider === 'google');
+      const k = 'absol-autodrive:' + (user && user.id);
+      if (linked && Date.now() - (+localStorage.getItem(k) || 0) > 600000){
+        localStorage.setItem(k, String(Date.now()));            /* only one automatic try */
+        if (session.provider_token){
+          const sk = await driveKey(session.provider_token, prof);
+          if (sk) return { sk };
+        } else if (confirm('Restore your message key from Google Drive? No passphrase needed.')){
+          localStorage.setItem(OP, JSON.stringify({ op: 'restore', t: Date.now() }));
+          const { data, error } = await sb.auth.signInWithOAuth({ provider: 'google', options: {
+            redirectTo: location.origin + location.pathname, scopes: SCOPE, skipBrowserRedirect: true,
+            queryParams: { prompt: 'select_account consent' } } });
+          if (error || !data || !data.url) throw (error || new Error('Google sign-in URL missing'));
+          location.assign(data.url);
+          return new Promise(() => {});                          /* page is leaving for Google */
+        }
+      }
+    } catch (e){ localStorage.removeItem(OP); console.warn('[auto drive]', e); }
+    return origAsk(prof);
+  };
+})();
+</script>
+<!-- ===== END ABSOL FIX ===== -->
 </body>
 </html>
