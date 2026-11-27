@@ -6196,6 +6196,267 @@ googleBtn.addEventListener('click', async function () {
 })();
 </script>
 <!-- ===== END ABSOL THEME POP PATCH ===== -->
+<!-- ===== ABSOL FEATURES PATCH: pinned chats, reactions, scheduled messages =====
+     Run absol-features.sql first. Paste this at the very bottom of your HTML, right before </body>.
+     To undo, delete this block. -->
+<style>
+/* pinned */
+.pinic .i{width:13px;height:13px;margin:0 0 0 6px;color:var(--accent);vertical-align:-.1em}
+
+/* reactions */
+.rxs{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.rxc{font-size:12.5px;padding:1px 7px;border-radius:10px;background:color-mix(in srgb,currentColor 14%,transparent);cursor:pointer}
+.rxc.me{outline:1px solid currentColor}
+.rxbar{display:flex;gap:2px;padding:4px 2px 6px;margin-bottom:4px;border-bottom:1px solid var(--border)}
+.menu .rxb{flex:1;justify-content:center;padding:6px 4px;font-size:22px;border-radius:10px;background:none}
+.menu .rxb.on{background:var(--surface)}
+
+/* scheduled */
+#schDlg textarea{margin-top:4px}
+#schDlg input[type=datetime-local]{margin-top:8px}
+.schrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+.schrow:last-child{border-bottom:0}
+.schrow .tx{flex:1;min-width:0}
+.schrow .tx b{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.schrow .tx span{display:block;font-size:12px;color:var(--muted)}
+</style>
+<script>
+(function(){
+  const U = id => document.getElementById(id), P2 = window.P2;
+  if (!P2){ console.warn('[features] needs the earlier patches'); return; }
+
+  /* ---------- icons ---------- */
+  Object.assign(ICONS, {
+    pin: '<path d="M9 4h6l-1 6 3 3H7l3-3-1-6z"/><path d="M12 13v7"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
+  });
+  const sprite = document.querySelector('body > svg[aria-hidden]');
+  if (sprite) ['pin', 'clock'].forEach(k => sprite.insertAdjacentHTML('beforeend', `<symbol id="i-${k}" viewBox="0 0 24 24">${ICONS[k]}</symbol>`));
+
+  const appVisible = () => [...document.querySelectorAll('#app > section')].some(s => !s.hidden && s.id !== 'auth');
+  function redraw(){
+    renderList();
+    if (!U('chat').hidden){
+      const bx = U('msgs'), top = bx.scrollTop, atEnd = bx.scrollHeight - top - bx.clientHeight < 40;
+      renderMsgs(); if (!atEnd) bx.scrollTop = top;
+    }
+  }
+
+  /* =====================================================
+     1) PINNED CHATS
+     ===================================================== */
+  function pinnedCount(){
+    return Object.keys(settings).filter(id => settings[id].pinned).length + Object.keys(gset).filter(id => gset[id].pinned && groups[id]).length;
+  }
+  async function togglePin(){
+    const gid = curGroup, id = gid || current; if (!id) return;
+    const cur = gid ? (gset[gid] || {}).pinned : st(id).pinned;
+    if (!cur && pinnedCount() >= 3) return toast('You can pin up to 3 chats');
+    const ok = gid ? await setGSetting(gid, { pinned: !cur }) : await setSetting(id, { pinned: !cur });
+    if (ok){ toast(cur ? 'Chat unpinned' : 'Chat pinned'); renderList(); }
+  }
+  const _rl = renderList;
+  renderList = function(){ _rl(); try { pinRows(); } catch (e) { console.warn('[pin]', e); } };
+  function pinRows(){
+    if (!me) return;
+    const box = U('convos'), rows = [...box.querySelectorAll(':scope > .convo')]; if (!rows.length) return;
+    const last = {}, items = [];
+    msgs.filter(visible).forEach(m => last[otherId(m)] = m);
+    Object.keys(last).forEach(id => items.push({ kind: 'u', id, t: +new Date(last[id].created_at), fav: st(id).favorite ? 1 : 0 }));
+    Object.keys(groups).forEach(id => { const gm = lastGroupMsg(id); items.push({ kind: 'g', id, t: +new Date(gm ? gm.created_at : groups[id].created_at), fav: (gset[id] || {}).favorite ? 1 : 0 }); });
+    items.sort((a, b) => (b.fav - a.fav) || (b.t - a.t));
+    if (items.length !== rows.length) return;
+    const idx = [];
+    items.forEach((it, i) => { if (it.kind === 'u' ? st(it.id).pinned : (gset[it.id] || {}).pinned) idx.push(i); });
+    idx.slice().reverse().forEach(i => box.prepend(rows[i]));
+    idx.forEach(i => { const b = rows[i].querySelector('.tx b'); if (b) b.append(el('span', { className: 'pinic', textContent: '{{pin}}' })); });
+  }
+
+  /* =====================================================
+     2) MESSAGE REACTIONS
+     ===================================================== */
+  const EMO = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+  let rx = {}, rxCh = null, rxInit = null, lastCtx = null;
+  const rk = (kind, id) => kind + ':' + id;
+  function setRow(r, del){
+    const k = rk(r.kind, r.message_id); rx[k] = rx[k] || {};
+    if (del) delete rx[k][r.user_id]; else rx[k][r.user_id] = r.emoji;
+  }
+  async function loadRx(){
+    const { data, error } = await sb.from('message_reactions').select('*').limit(5000);
+    if (error){ console.warn('[reactions]', error.message); return; }
+    rx = {}; (data || []).forEach(r => setRow(r));
+  }
+  function liveRx(){
+    if (rxCh) sb.removeChannel(rxCh);
+    rxCh = sb.channel('rx-' + me.id)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'message_reactions' }, p => {
+        if (p.eventType === 'DELETE'){ const o = p.old; if (o && o.message_id) setRow(o, true); }
+        else if (p.new && p.new.message_id) setRow(p.new);
+        redraw();
+      }).subscribe();
+  }
+  async function react(ctx, emoji){
+    const kind = ctx.kind, id = String(ctx.m.id), mineE = (rx[rk(kind, id)] || {})[me.id];
+    try {
+      if (mineE === emoji){
+        setRow({ kind, message_id: id, user_id: me.id }, true); redraw();
+        const { error } = await sb.from('message_reactions').delete().eq('kind', kind).eq('message_id', id).eq('user_id', me.id);
+        if (error) throw error;
+      } else {
+        setRow({ kind, message_id: id, user_id: me.id, emoji }); redraw();
+        const { error } = await sb.from('message_reactions').upsert({ kind, message_id: id, user_id: me.id, emoji }, { onConflict: 'kind,message_id,user_id' });
+        if (error) throw error;
+      }
+    } catch (e) { await loadRx(); redraw(); toast('Could not react: ' + friendly(e)); }
+  }
+  /* remember which message the long-press menu is for (this item never shows itself) */
+  P2.menu.push({ order: -1, label: '', show: c => { lastCtx = c; return false; }, run: () => {} });
+  new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => {
+    if (!n || n.id !== 'mact' || !lastCtx || lastCtx.gone) return;
+    const menu = n.firstElementChild; if (!menu) return;
+    const ctx = lastCtx, mineE = (rx[rk(ctx.kind, String(ctx.m.id))] || {})[me.id];
+    menu.prepend(el('div', { className: 'rxbar' }, ...EMO.map(e => el('button', {
+      className: 'rxb' + (mineE === e ? ' on' : ''), textContent: e,
+      onclick: ev => { ev.stopPropagation(); n.remove(); react(ctx, e); } }))));
+  }))).observe(document.body, { childList: true });
+
+  P2.decor.push((b, m) => {
+    if (P2.isGone(m) || b.querySelector('.rxs')) return;
+    const kind = m.group_id ? 'group' : 'dm', map = rx[rk(kind, String(m.id))]; if (!map) return;
+    const counts = {}; Object.values(map).forEach(e => { counts[e] = (counts[e] || 0) + 1; });
+    const keys = Object.keys(counts); if (!keys.length) return;
+    b.append(el('div', { className: 'rxs' }, ...keys.map(e => el('span', {
+      className: 'rxc' + (map[me.id] === e ? ' me' : ''), textContent: e + (counts[e] > 1 ? ' ' + counts[e] : ''),
+      onclick: ev => { ev.stopPropagation(); react({ kind, m }, e); } }))));
+  });
+
+  setInterval(() => {
+    if (me && appVisible() && rxInit !== me.id){ rxInit = me.id; loadRx().then(() => { redraw(); liveRx(); }); }
+    else if (!me && rxInit){ rxInit = null; rx = {}; if (rxCh){ sb.removeChannel(rxCh); rxCh = null; } }
+  }, 1000);
+
+  /* =====================================================
+     3) SCHEDULED MESSAGES
+     ===================================================== */
+  const pad = n => String(n).padStart(2, '0');
+  const toLocal = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+
+  async function encryptFor(target, text){
+    const packed = text.startsWith(P2.PFX) ? P2.PFX + JSON.stringify({ t: text }) : text;
+    const data = nacl.util.decodeUTF8(packed);
+    if (target.group){
+      let g = groups[target.group], K = g && gkeys[g.id + ':' + g.epoch];
+      if (!K){ await loadGroups(false); g = groups[target.group]; K = g && gkeys[g.id + ':' + g.epoch]; }
+      if (!K) throw new Error('Group key not ready');
+      const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
+      return { kind: 'group', group_id: String(g.id), epoch: String(g.epoch), ciphertext: b64(nacl.secretbox(data, nonce, K)), nonce: b64(nonce) };
+    }
+    await loadProfiles([target.peer]);
+    const nonce = nacl.randomBytes(nacl.box.nonceLength);
+    return { kind: 'dm', recipient_id: target.peer, ciphertext: b64(nacl.box(data, nonce, unb64(profiles[target.peer].public_key), me.sk)), nonce: b64(nonce) };
+  }
+  function peek(r){
+    try {
+      let pt;
+      if (r.kind === 'group') pt = nacl.secretbox.open(unb64(r.ciphertext), unb64(r.nonce), gkeys[r.group_id + ':' + r.epoch]);
+      else pt = nacl.box.open(unb64(r.ciphertext), unb64(r.nonce), unb64(profiles[r.recipient_id].public_key), me.sk);
+      let s = pt ? nacl.util.encodeUTF8(pt) : null;
+      if (s && s.startsWith(P2.PFX)){ try { s = JSON.parse(s.slice(P2.PFX.length)).t; } catch {} }
+      return s;
+    } catch { return null; }
+  }
+
+  async function openSched(){
+    const gid = curGroup, peer = current; if (!gid && !peer) return;
+    if (!gid && st(peer).blocked) return toast('Unblock this user first');
+    const inp = U('msgInput'), fromInput = !P2.edit && inp.value.trim() && !inp.value.startsWith(P2.PFX);
+    const ta = el('textarea', { rows: 3, placeholder: 'Message to send later', value: fromInput ? inp.value : '' });
+    const dt = el('input', { type: 'datetime-local', value: toLocal(new Date(Date.now() + 3600000)), min: toLocal(new Date()) });
+    const msg = el('div', { className: 'hint', style: 'color:var(--danger);margin-top:8px' });
+    const list = el('div', {});
+    const tomorrow = () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d; };
+    const go = el('button', { textContent: 'Schedule', onclick: async () => {
+      const t = ta.value.trim(), when = new Date(dt.value);
+      if (!t) return (msg.textContent = 'Type a message');
+      if (isNaN(+when) || +when < Date.now() + 30000) return (msg.textContent = 'Pick a time at least a minute from now');
+      go.disabled = true; msg.textContent = '';
+      try {
+        const row = await encryptFor(gid ? { group: gid } : { peer }, t);
+        const { error } = await sb.from('scheduled_messages').insert({ ...row, send_at: when.toISOString() });
+        if (error) throw error;
+        if (fromInput) inp.value = '';
+        toast('Scheduled for ' + when.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
+        d.close();
+      } catch (e) {
+        msg.textContent = /scheduled_messages|PGRST205|relation/i.test(e.message || '') ? 'Run the scheduled-messages SQL in Supabase first' : friendly(e);
+        go.disabled = false;
+      }
+    } });
+    const d = el('dialog', { id: 'schDlg' }, el('h2', { textContent: 'Schedule message' }), ta, dt,
+      el('div', { className: 'rchips', style: 'padding:8px 0 0' },
+        chipBtn('In 1 hour', () => { dt.value = toLocal(new Date(Date.now() + 3600000)); }),
+        chipBtn('Tomorrow 9:00', () => { dt.value = toLocal(tomorrow()); })),
+      msg,
+      el('div', { className: 'row', style: 'margin-top:10px' }, el('button', { className: 'ghost', textContent: 'Cancel', onclick: () => d.close() }), go),
+      el('div', { className: 'sec', style: 'padding:14px 0 4px', textContent: 'Waiting to send' }), list,
+      el('p', { className: 'hint', textContent: 'Sent by the server at the chosen time, even if Absol is closed. It may arrive up to a minute late.' }));
+    d.addEventListener('close', () => d.remove());
+    document.body.appendChild(d); d.showModal();
+
+    async function refresh(){
+      const { data, error } = await sb.from('scheduled_messages').select('*').order('send_at', { ascending: true });
+      if (error){ list.replaceChildren(el('div', { className: 'hint', textContent: 'Nothing scheduled' })); return; }
+      const mine = (data || []).filter(r => gid ? r.kind === 'group' && r.group_id === String(gid) : r.kind === 'dm' && r.recipient_id === peer);
+      if (!mine.length){ list.replaceChildren(el('div', { className: 'hint', textContent: 'Nothing scheduled in this chat' })); return; }
+      list.replaceChildren(...mine.map(r => el('div', { className: 'schrow' },
+        el('div', { className: 'tx' }, el('b', { textContent: peek(r) || 'Scheduled message' }),
+          el('span', { textContent: new Date(r.send_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) })),
+        chipBtn('Cancel', async () => {
+          const x = await sb.from('scheduled_messages').delete().eq('id', r.id);
+          if (x.error) return toast('Could not cancel: ' + friendly(x.error));
+          toast('Scheduled message cancelled'); refresh();
+        }))));
+    }
+    refresh();
+  }
+
+  /* hold the send button to schedule what you typed */
+  const sbn = U('sendBtn'); let lt = 0, lp = 0;
+  sbn.addEventListener('touchstart', () => {
+    clearTimeout(lt);
+    lt = setTimeout(() => { lp = Date.now(); if (navigator.vibrate) navigator.vibrate(15); openSched(); }, 600);
+  }, { passive: true });
+  ['touchend', 'touchcancel', 'touchmove'].forEach(n => sbn.addEventListener(n, () => clearTimeout(lt), { passive: true }));
+  sbn.addEventListener('click', e => { if (Date.now() - lp < 900){ e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  sbn.addEventListener('contextmenu', e => e.preventDefault());
+
+  /* =====================================================
+     Menu entries (pin + schedule)
+     ===================================================== */
+  const mk = (a, t) => { const b = el('button', { textContent: t }); b.dataset.a = a; return b; };
+  const mPin = mk('pin', '{{pin}} Pin chat'), mSch = mk('sched', '{{clock}} Schedule message');
+  const menu = U('menu'), ref = menu.querySelector('[data-a=clear]');
+  menu.insertBefore(mPin, ref); menu.insertBefore(mSch, ref);
+  const _mm = menuMode;
+  menuMode = function(){
+    _mm();
+    const p = curGroup ? (gset[curGroup] || {}).pinned : st(current).pinned;
+    mPin.hidden = false; mSch.hidden = false;
+    mPin.textContent = p ? '{{pin}} Unpin chat' : '{{pin}} Pin chat';
+  };
+  const _mc = menu.onclick;
+  menu.onclick = e => {
+    const b = e.target.closest('button'), a = b && b.dataset.a;
+    if (a === 'pin'){ U('menuWrap').hidden = true; togglePin(); return; }
+    if (a === 'sched'){ U('menuWrap').hidden = true; openSched(); return; }
+    return _mc(e);
+  };
+
+  if (me) redraw();
+})();
+</script>
+<!-- ===== END ABSOL FEATURES PATCH ===== -->
 
 </body>
 </html>
