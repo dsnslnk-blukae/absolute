@@ -8854,79 +8854,159 @@ body.absol-audio-open {
 })();
 </script>
 <!-- ===== END ABSOL LINKS ===== -->
-<!-- ===== ABSOL FRESH THEMES: bright, cool, flat colours (no glow, no gradients) =====
-     Paste at the very bottom of your HTML, after your last block and before </body>.
-     Default and Dark stay as they are. Lavender, Blue, Green, Orange and Rose are redone.
-     To undo, delete this block. No SQL needed. -->
+<!-- ===== ABSOL THEMES V3: live colours everywhere, softer chat bubbles, Dark mode toggle =====
+     1) DELETE the older theme blocks: "ABSOL FRESH THEMES" and "ABSOL THEMES V2" (whichever you still have).
+     2) Paste this at the very bottom of your HTML, after your last block and before </body>.
+     Settings -> Theme -> "Dark mode" turns any colour theme dark. Default (white) and Dark are unchanged in behaviour.
+     No glow, no gradients. No SQL needed. To undo, delete this block. -->
 <style>
-/* remove every glow and gradient left over from earlier patches */
+/* no glow or gradient anywhere */
 html #app,:root[data-theme] #app{background:var(--bg)!important}
 .fab{box-shadow:none!important}
 .card,.scard,.dcard,.menu,dialog{box-shadow:none}
 
-/* light themes: small fixes so nothing disappears on a bright background */
+/* tonal controls, no extra outlines */
+.iconbtn,.searchpill,.chip{border:0}
+.iconbtn{background:var(--surface2);color:var(--accent2)}
+.searchpill{background:var(--surface2);color:var(--muted)}
+.chip{background:var(--surface2);color:var(--accent2)}
+.chip.on{background:var(--accent);color:var(--accent-text)}
+.switch{background:var(--surface);border:1px solid var(--border)}
+.card,.scard,.dcard{border:1px solid var(--border)}
+
+/* buttons are the strong accent colour; chat bubbles use their own softer tone */
+#msgs .b.me{background:var(--mine);color:var(--mine-text)}
+#msgs .b.them{background:var(--theirs);color:var(--text);border:1px solid var(--border)}
+#msgs .b.me .att .ai{background:color-mix(in srgb,var(--mine-text) 12%,transparent);color:var(--mine-text)}
+#msgs .b.me .vm .pp,#msgs .b.me .lcard .lci{background:var(--accent);color:var(--accent-text)}
+#msgs .b.me a.lnk{color:inherit}
+
+/* light themes: keep the sent-message dot visible */
 :root[data-mode="light"]{--dot-sent:var(--muted)}
 :root[data-mode="light"] #msgs .b.me > .tk.dot.pend{border-color:var(--muted)}
 .abs-dialog input[type="datetime-local"]{color-scheme:inherit!important}
 
-/* controls inside a sent bubble must not match the bubble colour */
-:root[data-mode="light"] #msgs .b.me .vm .pp,
-:root[data-mode="light"] #msgs .b.me .lcard .lci,
-:root[data-theme="default"] #msgs .b.me .vm .pp,
-:root[data-theme="default"] #msgs .b.me .lcard .lci{background:var(--mine-text);color:var(--mine)}
-:root[data-mode="light"] #msgs .b.me .att .ai{background:rgba(255,255,255,.22);color:#fff}
+/* Default is the white theme now: undo the old black-and-white call-button overrides */
+:root[data-theme="default"] .cb.green{background:#3f9a6b;color:#fff}
+:root[data-theme="default"] .cb.red{background:#c4575c;color:#fff}
+:root[data-theme="default"] .i.online{color:#3f9a6b}
 </style>
 <script>
 (function(){
-  const DG = '#d93a4e';   /* clear red for warnings and delete */
-  const mk = (n, hue, mode, v) => { v.danger = DG; v.partner = v.accent2; v.hi = v.accent; return { n, hue, mode, v }; };
+  const DG = '#d93a4e';
+  const DK = 'absol-themedark';
+  const P = (bg, surface, surface2, border, text, muted, accent, accent2, at, mine, mt, theirs) =>
+    ({ bg, surface, surface2, border, text, muted, accent, accent2, 'accent-text': at, mine, 'mine-text': mt, theirs });
+  const mk = (n, hue, mode, v) => { v = { ...v, danger: DG }; v.partner = v.accent2; v.hi = v.accent; return { n, hue, mode, v }; };
 
-  /* Solid colours only. Background is a soft tint, cards are clean white,
-     the sent bubble is the full accent colour, accent2 is a deeper shade for text and icons. */
-  const T = {
-    lavender: mk('Lavender', 262, 'light', {
-      bg:'#f3f0ff', surface:'#ffffff', surface2:'#e9e4ff', border:'#dbd3fb',
-      text:'#1d1840', muted:'#766ea3', accent:'#6a49ee', accent2:'#4528c2', 'accent-text':'#ffffff',
-      mine:'#6a49ee', 'mine-text':'#ffffff', theirs:'#ffffff' }),
-    blue: mk('Blue', 214, 'light', {
-      bg:'#edf6ff', surface:'#ffffff', surface2:'#dfecfb', border:'#cfe0f4',
-      text:'#0e2540', muted:'#668099', accent:'#1f7aec', accent2:'#0b57b8', 'accent-text':'#ffffff',
-      mine:'#1f7aec', 'mine-text':'#ffffff', theirs:'#ffffff' }),
-    green: mk('Mint', 152, 'light', {
-      bg:'#eefaf3', surface:'#ffffff', surface2:'#dbf2e5', border:'#c9e8d7',
-      text:'#0f2a1d', muted:'#5b8670', accent:'#0f9d6a', accent2:'#07674a', 'accent-text':'#ffffff',
-      mine:'#0f9d6a', 'mine-text':'#ffffff', theirs:'#ffffff' }),
-    orange: mk('Orange', 28, 'light', {
-      bg:'#fff5ec', surface:'#ffffff', surface2:'#ffe8d4', border:'#f5d6bb',
-      text:'#35200f', muted:'#98785a', accent:'#ea5c0a', accent2:'#b03c00', 'accent-text':'#ffffff',
-      mine:'#ea5c0a', 'mine-text':'#ffffff', theirs:'#ffffff' }),
-    rose: mk('Rose', 345, 'light', {
-      bg:'#fff0f4', surface:'#ffffff', surface2:'#ffdfe9', border:'#f6cddb',
-      text:'#3a0f1f', muted:'#9e6680', accent:'#e0356a', accent2:'#a81f4c', 'accent-text':'#ffffff',
-      mine:'#e0356a', 'mine-text':'#ffffff', theirs:'#ffffff' })
+  /* Each colour theme has a light and a dark version. Page, cards and controls are tinted with the theme colour,
+     text is a deep (or pale) shade of the same hue, buttons use the strong accent,
+     and chat bubbles use a separate softer tone so they never match the buttons. */
+  const PAL = {
+    lavender: { n: 'Lavender', hue: 262,
+      light: P('#e7e0fb','#f1ecfe','#ddd3fa','#cdc1f1','#2a2260','#7468a8','#6c4df0','#5a3fd6','#ffffff','#cbbdfb','#2a2260','#f1ecfe'),
+      dark:  P('#17122e','#1f1840','#2a2158','#372c70','#ece6ff','#9d92d1','#9a7dff','#c0b0ff','#150b36','#3b2f86','#f0ebff','#2a2158') },
+    blue: { n: 'Blue', hue: 214,
+      light: P('#dcecfb','#ebf4fd','#cce1f7','#bad3ee','#12385f','#5f84aa','#2b7de0','#1b63c0','#ffffff','#b9d6f7','#12385f','#ebf4fd'),
+      dark:  P('#0b1830','#112243','#19305a','#264079','#e6f0ff','#8fabd6','#4c9bff','#a9cdff','#06142e','#1f4d96','#eaf3ff','#19305a') },
+    green: { n: 'Mint', hue: 152,
+      light: P('#dcf2e6','#eaf8f0','#c8e9d8','#b5ddc8','#12402c','#5a8b72','#1a9c6a','#0f7e54','#ffffff','#b4e3cc','#12402c','#eaf8f0'),
+      dark:  P('#0a1f17','#10291f','#17392b','#235240','#e3f7ec','#86bda1','#34c88a','#a2ecc9','#04180f','#1b6a4b','#e9fbf2','#17392b') },
+    orange: { n: 'Orange', hue: 28,
+      light: P('#fde8d6','#fef3e8','#fad8ba','#f1c6a1','#4d2a0f','#a07a58','#e8620f','#bf4e08','#ffffff','#f8c9a0','#4d2a0f','#fef3e8'),
+      dark:  P('#231409','#2e1b0d','#3f2613','#5a3820','#ffeede','#cba17c','#ff8a3d','#ffc896','#2a1100','#8a4513','#fff1e4','#3f2613') },
+    rose: { n: 'Rose', hue: 345,
+      light: P('#fbe0ea','#fdeef3','#f8cbdc','#eeb9ce','#561430','#a8688a','#e03e75','#be2a5e','#ffffff','#f5bbd0','#561430','#fdeef3'),
+      dark:  P('#26101b','#321626','#451e34','#61304a','#ffe9f1','#d29ab4','#ff5c8f','#ffb3cc','#2e0716','#8f2a53','#ffedf4','#451e34') }
   };
+  const FIXED = ['default', 'dark'];                      /* these two have no dark toggle */
+  const isDark = () => { try { return localStorage.getItem(DK) === '1'; } catch { return false; } };
 
-  /* keep Default and Dark exactly as they were, mark them as dark */
-  if (THEMES.default) THEMES.default.mode = 'dark';
-  if (THEMES.dark) THEMES.dark.mode = 'dark';
-  Object.keys(T).forEach(k => { THEMES[k] = T[k]; });
+  /* Default = white theme. Dark = your existing Dark theme. */
+  THEMES.default = mk('Default', 220, 'light', P('#f3f4f6','#ffffff','#e8eaee','#dcdfe5','#20242c','#7a818d','#2f3542','#4b5363','#ffffff','#dfe3ea','#20242c','#ffffff'));
+  if (!THEMES.dark) THEMES.dark = mk('Dark', 0, 'dark', P('#131314','#1b1b1d','#252528','#333337','#ededed','#8b8b92','#ededed','#b8b8bf','#101012','#050505','#f4f4f4','#252528'));
+  THEMES.dark.mode = 'dark';
+
+  /* rebuild the colour themes in the chosen mode (also keeps the Theme list previews correct) */
+  function sync(){
+    const d = isDark();
+    Object.keys(PAL).forEach(k => { THEMES[k] = mk(PAL[k].n, PAL[k].hue, d ? 'dark' : 'light', d ? PAL[k].dark : PAL[k].light); });
+  }
+  sync();
+
+  /* avatars read the theme variables, so they change instantly everywhere (chats, calls, profile) */
+  const AVT = [
+    ['var(--accent)', 'var(--accent-text)'],
+    ['var(--accent2)', 'var(--accent-text)'],
+    ['color-mix(in srgb,var(--accent) 75%,var(--text))', 'var(--accent-text)'],
+    ['color-mix(in srgb,var(--accent) 35%,var(--surface2))', 'var(--accent2)']
+  ];
+  avatar = function(name, cls){
+    const d = document.createElement('div'); d.className = 'av ' + (cls || '');
+    const n = name || '?'; d.textContent = n[0].toUpperCase();
+    let h = 0; for (const c of n) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    const p = AVT[h % 4]; d.style.background = p[0]; d.style.color = p[1];
+    const ph = (cls || '').includes('grp') ? null : photoByName[n];
+    if (ph){ d.textContent = ''; d.style.backgroundImage = 'url("' + ph + '")'; d.style.backgroundSize = 'cover'; d.style.backgroundPosition = 'center'; }
+    return d;
+  };
+  if (window.P2) P2.decor.push((b, m) => {
+    const col = b.parentElement && b.parentElement.classList.contains('gcol') ? b.parentElement : null; if (!col) return;
+    const g = col.querySelector('.gname'); if (!g) return;
+    let h = 0; for (const c of String(m.sender_id)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    g.style.color = ['var(--accent)', 'var(--accent2)', 'color-mix(in srgb,var(--accent) 70%,var(--text))'][h % 3];
+  });
+
+  /* repaint every screen that is already built */
+  function refreshAll(){
+    try {
+      if (!me) return;
+      renderList();
+      if (!document.getElementById('chat').hidden) renderMsgs();
+      if (window.AbsolCall && AbsolCall.render) AbsolCall.render();
+      const ab = document.getElementById('avatarBtn'); if (ab) ab.replaceChildren(avatar(me.username));
+      if (typeof fillProfile === 'function' && !document.getElementById('profile').hidden) fillProfile();
+    } catch (e) { console.warn('[theme]', e); }
+  }
 
   applyTheme = function(k){
     const key = THEMES[k] ? k : 'lavender', t = THEMES[key], root = document.documentElement;
     Object.entries(t.v).forEach(([a, b]) => root.style.setProperty('--' + a, b));
-    root.style.setProperty('--grad', t.v.accent);          /* solid, not a gradient */
-    root.style.colorScheme = t.mode || 'dark';
+    root.style.setProperty('--grad', t.v.accent);
+    root.style.colorScheme = t.mode;
     root.setAttribute('data-theme', key);
-    root.setAttribute('data-mode', t.mode || 'dark');
+    root.setAttribute('data-mode', t.mode);
     themeHue = t.hue;
     try { localStorage.setItem('absol-theme', key); } catch {}
     document.querySelector('meta[name=theme-color]').content = t.v.bg;
-    try { if (me){ renderList(); if (!document.getElementById('chat').hidden) renderMsgs(); } } catch {}
+    refreshAll();
+    requestAnimationFrame(refreshAll);                 /* second pass, so late-built lists never keep old colours */
   };
+
+  function setDark(v){
+    try { localStorage.setItem(DK, v ? '1' : '0'); } catch {}
+    sync();
+    applyTheme(localStorage.getItem('absol-theme') || 'lavender');
+  }
+
+  /* Settings -> Theme: Dark mode switch + theme list */
+  VIEWS.theme = function(b){
+    const cur = (typeof prefs !== 'undefined' && prefs.theme) || localStorage.getItem('absol-theme') || 'lavender';
+    const can = !FIXED.includes(cur);
+    const row = srow('Dark mode', pill(can && isDark(), v => { setDark(v); rerender(); }));
+    if (!can){ row.style.opacity = '.5'; const i = row.querySelector('input'); if (i) i.disabled = true; }
+    b.append(
+      scard(row),
+      el('p', { className: 'hint', textContent: can ? 'Switches the current colour theme to its dark version.' : 'Pick a colour theme to use dark mode. Default is white and Dark is already dark.' }),
+      scard(...Object.entries(THEMES).map(([k, t]) => srow(t.n,
+        el('span', { className: 'dots' }, ...[t.v.bg, t.v.accent, t.v.accent2].map(c => el('i', { style: 'background:' + c })), cur === k ? ' {{check}}' : ''),
+        () => { applyTheme(k); savePrefs({ theme: k }); rerender(); }))));
+  };
+
   applyTheme(localStorage.getItem('absol-theme') || 'lavender');
 })();
 </script>
-<!-- ===== END ABSOL FRESH THEMES ===== -->
+<!-- ===== END ABSOL THEMES V3 ===== -->
 
 </body>
 </html>
