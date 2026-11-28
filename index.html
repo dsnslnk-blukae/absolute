@@ -9265,5 +9265,70 @@ html #app,:root[data-theme] #app{background:var(--bg)!important}
 #convos .convo .tx b .muteic{color:var(--muted)}
 </style>
 <!-- ===== END ABSOL FIX ===== -->
+  <!-- ===== ABSOL: themed loading screen + remembered theme + stuck-load rescue ===== -->
+<style>
+#absBoot{position:fixed;inset:0;z-index:99;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;background:var(--bg);color:var(--accent);transition:opacity .35s}
+#absBoot.out{opacity:0;pointer-events:none}
+#absBoot .bw{display:flex;font:800 40px/1 "Plus Jakarta Sans",system-ui,sans-serif;letter-spacing:.06em}
+#absBoot .bw span{display:inline-block;animation:abwave 1.6s ease-in-out infinite}
+#absBoot .bw span:nth-child(2){animation-delay:.12s}
+#absBoot .bw span:nth-child(3){animation-delay:.24s}
+#absBoot .bw span:nth-child(4){animation-delay:.36s}
+#absBoot .bw span:nth-child(5){animation-delay:.48s}
+#absBoot .bd{display:flex;gap:8px}
+#absBoot .bd i{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:abdot 1.2s ease-in-out infinite}
+#absBoot .bd i:nth-child(2){animation-delay:.18s}
+#absBoot .bd i:nth-child(3){animation-delay:.36s}
+#absBoot .bs{min-height:64px;text-align:center;color:var(--muted);font-size:14px}
+#absBoot .bs button{margin-top:10px}
+@keyframes abwave{0%,60%,100%{transform:translateY(0);opacity:.55}30%{transform:translateY(-9px);opacity:1}}
+@keyframes abdot{0%,80%,100%{transform:scale(.55);opacity:.35}40%{transform:scale(1);opacity:1}}
+@media (prefers-reduced-motion:reduce){#absBoot .bw span,#absBoot .bd i{animation:none}}
+</style>
+<script>
+(function(){
+  'use strict';
+  if (window.__absolBoot) return; window.__absolBoot = true;
+
+  /* 1) remember the real theme in a key the old startup code never overwrites */
+  const _apply = applyTheme;
+  applyTheme = function(){
+    const r = _apply.apply(this, arguments);
+    try { const t = document.documentElement.getAttribute('data-theme'); if (t) localStorage.setItem('absol-theme-keep', t); } catch {}
+    return r;
+  };
+  try {
+    const keep = localStorage.getItem('absol-theme-keep');
+    if (keep && THEMES[keep]) applyTheme(keep);
+  } catch {}
+
+  /* 2) themed loading screen (replaces the old plain one) */
+  const old = document.getElementById('boot'); if (old) old.remove();
+  const SK = 'absol-boot-reload';
+  const shown = () => [...document.querySelectorAll('#app > section')].some(s => !s.hidden);
+  if (shown()) return;
+
+  const word = el('div', { className: 'bw' }, ...'Absol'.split('').map(c => el('span', { textContent: c })));
+  const status = el('div', { className: 'bs' });
+  const boot = el('div', { id: 'absBoot' }, word, el('div', { className: 'bd' }, el('i'), el('i'), el('i')), status);
+  document.body.appendChild(boot);
+
+  let t1 = setTimeout(() => {
+    status.replaceChildren('Taking longer than usual…', document.createElement('br'),
+      el('button', { textContent: 'Reload', onclick: () => location.reload() }));
+  }, 10000);
+  let t2 = setTimeout(() => {
+    if (!sessionStorage.getItem(SK)){ sessionStorage.setItem(SK, '1'); location.reload(); }
+  }, 20000);
+
+  const poll = setInterval(() => {
+    if (!shown()) return;
+    clearInterval(poll); clearTimeout(t1); clearTimeout(t2);
+    try { sessionStorage.removeItem(SK); } catch {}
+    boot.classList.add('out'); setTimeout(() => boot.remove(), 400);
+  }, 150);
+})();
+</script>
+<!-- ===== END ABSOL: loading screen ===== -->
 </body>
 </html>
