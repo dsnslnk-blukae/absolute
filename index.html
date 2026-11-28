@@ -9083,6 +9083,147 @@ html #app,:root[data-theme] #app{background:var(--bg)!important}
 })();
 </script>
 <!-- ===== END ABSOL: Default is the former Dark theme ===== -->
+<!-- ===== ABSOL FIX: working reminders + home-page reminder icon ===== -->
+<style>
+.convo .tx b .remic{display:inline-flex;align-items:center;width:16px;height:16px;margin:0 0 0 7px;vertical-align:-2px;color:var(--accent)}
+.convo .tx b .remic svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#remAlert .rrow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+#remAlert .rrow b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#remAlert .rrow button{padding:7px 12px}
+</style>
+<script>
+(function(){
+  'use strict';
+  if (window.__absolRemFix) return; window.__absolRemFix = true;
 
+  const PFX = 'absol-reminders:', RealN = window.Notification;
+  const shown = new Set();
+  let internal = false, queue = [], dlg = null, ringT = null;
+  const key = () => me ? PFX + me.id : null;
+  const load = () => { try { return JSON.parse(localStorage.getItem(key()) || '[]'); } catch { return []; } };
+  const label = r => r.kind === 'group' ? ((groups[r.id] || {}).name || 'Group') : dname(r.id);
+
+  /* silence the old, unreliable reminder notices (this block replaces them) */
+  if (RealN){
+    window.Notification = new Proxy(RealN, {
+      construct(t, args){ if (args[0] === 'Absol reminder') return { close(){}, onclick: null }; return Reflect.construct(t, args); },
+      get(t, p){ const v = t[p]; return (typeof v === 'function' && p !== 'prototype') ? v.bind(t) : v; }
+    });
+  }
+  const _toast = toast;
+  toast = function(t){ if (typeof t === 'string' && t.startsWith('Remember to check ')) return; return _toast.apply(this, arguments); };
+
+  /* wake the audio engine on the first tap so the alarm can sound later */
+  ['pointerdown', 'touchstart'].forEach(n => document.addEventListener(n, function f(){
+    try { const A = window.AudioContext || window.webkitAudioContext; window.__ac = window.__ac || new A(); if (window.__ac.state === 'suspended') window.__ac.resume(); } catch {}
+    document.removeEventListener(n, f, true);
+  }, true));
+
+  /* any reminder that leaves storage after its time = due (covers old timers and "expired on return") */
+  const _set = Storage.prototype.setItem;
+  Storage.prototype.setItem = function(k, v){
+    if (this === localStorage && typeof k === 'string' && k.startsWith(PFX)){
+      let lost = [];
+      try {
+        const old = JSON.parse(this.getItem(k) || '[]'), keep = new Set(JSON.parse(v || '[]').map(x => x.rid));
+        lost = old.filter(r => !keep.has(r.rid) && r.at <= Date.now() + 500);
+      } catch {}
+      const out = _set.apply(this, arguments);
+      setTimeout(() => { try { renderList(); } catch {} }, 0);
+      if (lost.length && !internal) setTimeout(() => alertDue(lost), 0);
+      return out;
+    }
+    return _set.apply(this, arguments);
+  };
+
+  async function sysNotify(r){
+    if (!RealN || RealN.permission !== 'granted') return;
+    const body = 'Remember to check ' + label(r);
+    try { const n = new RealN('Absol reminder', { body, tag: r.rid }); n.onclick = () => { window.focus(); openRem(r); n.close(); }; return; } catch {}
+    try { const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration(); if (reg && reg.showNotification) await reg.showNotification('Absol reminder', { body, tag: r.rid }); } catch {}
+  }
+  function openRem(r){ try { if (r.kind === 'group') openGroup(r.id); else openChat(r.id); } catch {} }
+
+  function stopRing(){ clearInterval(ringT); ringT = null; }
+  function ring(){
+    if (document.hidden) return;
+    try { playSeq((typeof RINGS !== 'undefined' && RINGS[(prefs || {}).ringtone]) || RINGS.classic); } catch {}
+    if (navigator.vibrate) navigator.vibrate([300, 150, 300]);
+  }
+  function showDlg(){
+    if (dlg){ try { dlg.close(); } catch {} dlg.remove(); dlg = null; }
+    if (!queue.length) return;
+    const d = dlg = document.createElement('dialog');
+    d.id = 'remAlert'; d.className = 'abs-dialog';
+    const h = document.createElement('h2'); h.textContent = 'Reminder';
+    const p = document.createElement('p'); p.className = 'abs-sub'; p.textContent = 'You asked to be reminded about:';
+    d.append(h, p);
+    queue.forEach(r => {
+      const row = document.createElement('div'); row.className = 'rrow';
+      const b = document.createElement('b'); b.textContent = label(r);
+      const go = document.createElement('button'); go.textContent = 'Open';
+      go.onclick = () => { done(); openRem(r); };
+      row.append(b, go); d.appendChild(row);
+    });
+    const act = document.createElement('div'); act.className = 'abs-dialog-actions';
+    const ok = document.createElement('button'); ok.textContent = 'Dismiss'; ok.onclick = done;
+    act.appendChild(ok); d.appendChild(act);
+    d.addEventListener('cancel', e => { e.preventDefault(); done(); });
+    document.body.appendChild(d); d.showModal();
+    stopRing(); ring(); let n = 0;
+    ringT = setInterval(() => { if (++n > 16) stopRing(); else ring(); }, 2500);
+  }
+  function done(){ stopRing(); queue = []; if (dlg){ try { dlg.close(); } catch {} dlg.remove(); dlg = null; } }
+
+  function alertDue(list){
+    if (!me) return;
+    const fresh = list.filter(r => r && r.user === me.id && !shown.has(r.rid));
+    if (!fresh.length) return;
+    if (document.getElementById('lockUI')){ setTimeout(() => alertDue(fresh), 1000); return; }   /* wait for PIN unlock */
+    fresh.forEach(r => { shown.add(r.rid); sysNotify(r); });
+    queue.push(...fresh); showDlg();
+  }
+
+  function check(){
+    if (!me) return;
+    const now = Date.now(), l = load(), due = l.filter(r => r.at <= now);
+    if (!due.length) return;
+    internal = true;
+    try { localStorage.setItem(key(), JSON.stringify(l.filter(r => r.at > now))); } finally { internal = false; }
+    alertDue(due);
+  }
+  setInterval(check, 1000);
+  ['visibilitychange', 'focus', 'pageshow'].forEach(n => window.addEventListener(n, () => { if (!document.hidden) check(); }, true));
+
+  /* ---------- small clock icon on chat rows (home page) ---------- */
+  const SV = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.5M5 4 2.5 6.5M19 4l2.5 2.5"/></svg>';
+  function ordered(){
+    const last = {}, items = [];
+    msgs.filter(visible).forEach(m => last[otherId(m)] = m);
+    Object.keys(last).forEach(id => items.push({ kind: 'dm', id, t: +new Date(last[id].created_at) }));
+    Object.keys(groups).forEach(id => { const gm = lastGroupMsg(id); items.push({ kind: 'group', id, t: +new Date(gm ? gm.created_at : groups[id].created_at) }); });
+    const pin = x => x.kind === 'dm' ? !!st(x.id).pinned : !!(gset[x.id] || {}).pinned;
+    const fav = x => x.kind === 'dm' ? !!st(x.id).favorite : !!(gset[x.id] || {}).favorite;
+    return items.sort((a, b) => (pin(b) - pin(a)) || (fav(b) - fav(a)) || (b.t - a.t));
+  }
+  function remIcons(){
+    if (!me) return;
+    const act = load().filter(r => r.at > Date.now()); if (!act.length) return;
+    const rows = [...document.querySelectorAll('#convos > .convo')], its = ordered();
+    if (rows.length !== its.length) return;
+    rows.forEach((row, i) => {
+      const mine = act.filter(r => r.kind === its[i].kind && r.id === its[i].id); if (!mine.length) return;
+      const b = row.querySelector('.tx b'); if (!b || b.querySelector('.remic')) return;
+      const s = document.createElement('span'); s.className = 'remic';
+      s.title = 'Reminder: ' + new Date(Math.min(...mine.map(r => r.at))).toLocaleString();
+      s.innerHTML = SV; b.appendChild(s);
+    });
+  }
+  const prev = renderList;
+  renderList = function(){ prev(); try { remIcons(); } catch (e) { console.warn('[remind icon]', e); } };
+  try { renderList(); } catch {}
+})();
+</script>
+<!-- ===== END ABSOL FIX: reminders ===== -->
 </body>
 </html>
