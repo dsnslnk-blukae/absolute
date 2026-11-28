@@ -8224,131 +8224,125 @@ body.absol-audio-open {
 })();
 </script>
 <!-- ===== END ABSOL FIX ===== -->
-<!-- ===== ABSOL FIX 5: automatic Drive backup + restore, no passphrase ===== -->
-<style>#driveDlg input{display:none}</style>
+<!-- ===== ABSOL FIX 7: password-based key backup ===== -->
 <script>
 (function(){
-  const API = 'https://www.googleapis.com', SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
-  const PK = 'absol-drive-pending', fname = uid => 'absol-key-' + uid + '.json';
-  const pend = () => Date.now() - (+localStorage.getItem(PK) || 0) < 180000;
-  const setPend = () => localStorage.setItem(PK, String(Date.now()));
-  const clrPend = () => localStorage.removeItem(PK);
+  let lastPw = '', lastAt = 0;
+  const pw = () => Date.now() - lastAt < 120000 ? lastPw : '';
+  const remember = p => { lastPw = p; lastAt = Date.now(); };
 
-  /* 1) every Google login also asks for Drive access */
-  const oauth = sb.auth.signInWithOAuth.bind(sb.auth);
-  sb.auth.signInWithOAuth = c => {
-    if (c && c.provider === 'google') c = { ...c, options: { ...(c.options || {}), scopes: (c.options && c.options.scopes) || SCOPE } };
-    return oauth(c);
+  /* remember the password typed at login (memory only, two minutes) */
+  const _submit = submitAuth;
+  submitAuth = function(mode){
+    if (mode === 'login') remember($('p').value);
+    return _submit.apply(this, arguments);
   };
 
-  /* Drive helpers */
-  async function dget(url, tok){
-    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + tok } });
-    if (!r.ok){
-      let m = ''; try { const j = await r.json(); m = (j.error && (j.error.message || j.error.status)) || ''; } catch {}
-      const e = new Error(m || ('Google Drive error ' + r.status)); e.status = r.status; throw e;
-    }
+  /* save the locked copy of the key in the account */
+  async function save(secret){
+    if (b64(nacl.box.keyPair.fromSecretKey(me.sk).publicKey) !== me.pk) throw new Error('Key mismatch');
+    const json = await makeBackup(secret);
+    const { error } = await sb.from('profiles').update({ key_backup: json }).eq('id', me.id);
+    if (error) throw error;
+    me.backedUp = true; $('banner').hidden = true;
+    if (profiles[me.id]) profiles[me.id].key_backup = json;
+  }
+
+  /* changing the password re-locks the backup */
+  const _upd = sb.auth.updateUser.bind(sb.auth);
+  sb.auth.updateUser = async function(a){
+    const r = await _upd(a);
+    try {
+      if (a && a.password && !r.error){ remember(a.password); if (me && me.sk) await save(a.password); }
+    } catch (e){ console.warn('[backup]', e); }
     return r;
-  }
-  async function find(tok, uid){
-    const q = encodeURIComponent("name='" + fname(uid) + "' and 'appDataFolder' in parents");
-    const j = await (await dget(API + '/drive/v3/files?spaces=appDataFolder&fields=files(id)&q=' + q, tok)).json();
-    return (j.files || [])[0] || null;
-  }
-  const readFile = async (tok, f) => JSON.parse(await (await dget(API + '/drive/v3/files/' + f.id + '?alt=media', tok)).text());
+  };
 
-  async function driveKey(tok, prof){
-    const f = await find(tok, prof.id);
-    if (!f) throw new Error('There is no backup in your Google Drive yet. Log in once with Google on the device that has your messages, and it will be backed up automatically.');
-    const o = await readFile(tok, f);
-    if (o.mode !== 'plain' || !o.sk) throw new Error('The backup in your Drive was made with a passphrase. Log in once with Google on the device that has your messages, and it will be replaced automatically.');
-    const sk = unb64(o.sk);
-    if (b64(nacl.box.keyPair.fromSecretKey(sk).publicKey) !== prof.public_key) throw new Error('The backup in your Drive belongs to an older key for this account.');
-    return sk;
-  }
-
-  /* 2) restore with no passphrase */
-  function fail(text){
+  /* restore: password first, one small box only if needed */
+  function ask(note, canType){
     return new Promise(res => {
       let done = false;
       const fin = v => { if (done) return; done = true; d.close(); d.remove(); res(v); };
-      const d = el('dialog', {}, el('h2', { textContent: 'Couldn’t restore your chats' }),
-        el('p', { className: 'hint', textContent: text }),
-        el('div', { className: 'row', style: 'margin-top:12px' }, el('button', { textContent: 'Try again', onclick: () => { clrPend(); location.reload(); } })),
+      const inp = el('input', { type: 'password', placeholder: 'Your Absol password', autocomplete: 'current-password', style: 'margin-top:8px' });
+      const go = el('button', { textContent: 'Restore', onclick: () => { if (inp.value) fin({ secret: inp.value }); } });
+      inp.hidden = go.hidden = !canType;
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') go.click(); });
+      const d = el('dialog', {}, el('h2', { textContent: 'Restore your chats' }),
+        el('p', { className: 'hint', textContent: note || 'Enter your Absol password to restore your chats on this device.' }),
+        inp, el('div', { className: 'row', style: 'margin-top:12px' }, go),
         el('div', { className: 'row', style: 'margin-top:8px' },
           el('button', { className: 'ghost', textContent: 'Log out', onclick: () => fin(null) }),
           el('button', { className: 'ghost', textContent: 'New key', onclick: () => { if (confirm('Create a new key? Your older messages will stay unreadable.')) fin({ fresh: true }); } })));
       d.addEventListener('cancel', e => e.preventDefault());
-      document.body.appendChild(d); d.showModal();
+      document.body.appendChild(d); d.showModal(); if (canType) inp.focus();
     });
   }
   askRestore = async function(prof){
-    let text = '';
-    try {
-      const { data: { session } } = await sb.auth.getSession();
-      const user = session && session.user;
-      const linked = !!(user && (user.identities || []).some(i => i.provider === 'google'));
-      if (!linked) text = 'This account isn’t linked to Google, so your key can’t be restored automatically.';
-      else {
-        const tok = session.provider_token; let needPerm = !tok;
-        if (tok){
-          try { toast('Restoring your chats…'); const sk = await driveKey(tok, prof); clrPend(); return { sk }; }
-          catch (e){
-            if (e.status === 401 || e.status === 403){ needPerm = true; text = 'Google refused Drive access (' + e.status + '): ' + e.message; }
-            else text = e.message || String(e);
-          }
+    let secret = pw(), note = '', can = true;
+    for (;;){
+      if (!prof.key_backup){
+        note = 'There is no backup for this account yet. Open Absol on the device that has your messages, then update the backup in Settings.'; can = false;
+      } else if (secret){
+        try {
+          toast('Restoring your chats…');
+          const sk = await openBackup(prof.key_backup, secret);
+          if (b64(nacl.box.keyPair.fromSecretKey(sk).publicKey) !== prof.public_key) throw new Error('This backup doesn’t match your account’s current key');
+          return { sk };
+        } catch (e){
+          const m = e.message || String(e);
+          note = /wrong passphrase/i.test(m) ? 'That didn’t unlock the backup. Try your Absol password, or the old backup passphrase if you set one earlier.' : m;
+          can = !/match/i.test(m);
         }
-        if (needPerm && !pend()){
-          setPend(); toast('Restoring your chats…');
-          const { data, error } = await sb.auth.signInWithOAuth({ provider: 'google', options: {
-            redirectTo: location.origin + location.pathname, scopes: SCOPE, skipBrowserRedirect: true,
-            queryParams: { prompt: 'select_account consent' } } });
-          if (error || !data || !data.url) throw (error || new Error('Google sign-in URL missing'));
-          location.assign(data.url);
-          return new Promise(() => {});                      /* page is leaving for Google */
-        }
-        if (needPerm && !text) text = 'Google didn’t give Drive access.';
       }
-    } catch (e){ text = e.message || String(e); }
-    clrPend();
-    return fail(text);
+      const r = await ask(note, can);
+      if (!r) return null;
+      if (r.fresh) return { fresh: true };
+      secret = r.secret; note = '';
+    }
   };
 
-  /* 3) automatic backup after a Google login on a device that has the key */
-  async function autoBackup(tok){
-    if (b64(nacl.box.keyPair.fromSecretKey(me.sk).publicKey) !== me.pk) return false;
-    const plain = JSON.stringify({ v: 2, app: 'absol', mode: 'plain', sk: b64(me.sk) });
-    const f = await find(tok, me.id);
-    if (f){ try { const o = await readFile(tok, f); if (o.mode === 'plain' && o.sk === b64(me.sk)) return false; } catch {} }
-    const H = { Authorization: 'Bearer ' + tok };
-    let r;
-    if (f) r = await fetch(API + '/upload/drive/v3/files/' + f.id + '?uploadType=media', { method: 'PATCH', headers: { ...H, 'Content-Type': 'application/json' }, body: plain });
-    else {
-      const b = 'absolbnd', body = '--' + b + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify({ name: fname(me.id), parents: ['appDataFolder'] }) + '\r\n--' + b + '\r\nContent-Type: application/json\r\n\r\n' + plain + '\r\n--' + b + '--';
-      r = await fetch(API + '/upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: { ...H, 'Content-Type': 'multipart/related; boundary=' + b }, body });
-    }
-    if (!r.ok) throw new Error('Drive upload ' + r.status);
-    me.backedUp = true; $('banner').hidden = true;
-    await sb.auth.updateUser({ data: { drive_backup: new Date().toISOString() } });
-    return true;
+  /* Settings: Update backup (asks for the password only if you didn't just type it) */
+  function pwPrompt(){
+    return new Promise(res => {
+      let done = false;
+      const fin = v => { if (done) return; done = true; d.close(); d.remove(); res(v); };
+      const inp = el('input', { type: 'password', placeholder: 'Your Absol password', autocomplete: 'current-password', style: 'margin-top:8px' });
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') fin(inp.value); });
+      const d = el('dialog', {}, el('h2', { textContent: 'Update backup' }),
+        el('p', { className: 'hint', textContent: 'Your password protects the copy of your key saved in your account.' }), inp,
+        el('div', { className: 'row', style: 'margin-top:12px' },
+          el('button', { className: 'ghost', textContent: 'Cancel', onclick: () => fin(null) }),
+          el('button', { textContent: 'Update', onclick: () => fin(inp.value) })));
+      d.addEventListener('cancel', () => fin(null));
+      document.body.appendChild(d); d.showModal(); inp.focus();
+    });
   }
+  openBackupDlg = async function(){
+    let s = pw();
+    if (!s){
+      s = await pwPrompt(); if (!s) return;
+      const { error } = await sb.auth.signInWithPassword({ email: me.email, password: s });
+      if (error) return toast('Wrong password');
+    }
+    try { await save(s); toast('Backup updated'); }
+    catch (e){ toast('Backup failed: ' + friendly(e)); }
+    if (sview === 'account' && !$('settings').hidden) rerender();
+  };
+  $('bannerBtn').onclick = openBackupDlg;
+  $('backupBtn').onclick = openBackupDlg;
+
+  /* after a password login on a device that has the key: keep the backup in sync, silently */
   const appVisible = () => [...document.querySelectorAll('#app > section')].some(s => !s.hidden && s.id !== 'auth');
   let did = null;
   setInterval(async () => {
-    if (!me || did === me.id || !appVisible()) return; did = me.id;
-    try {
-      const { data: { session } } = await sb.auth.getSession();
-      const tok = session && session.provider_token; if (!tok) return;
-      if (await autoBackup(tok)) toast('Key backed up to Google Drive');
-    } catch (e){ console.warn('[auto backup]', e.message); }
+    if (!me || did === me.id || !appVisible()) return;
+    did = me.id;
+    const s = pw(); if (!s) return;
+    try { await save(s); } catch (e){ console.warn('[auto backup]', e.message); }
   }, 1500);
-
-  /* no backup reminder pop-up when a Drive token is present */
-  sb.auth.getSession().then(({ data: { session } }) => {
-    if (session && session.provider_token) try { localStorage.setItem('absol-bknag:' + session.user.id, String(Date.now())); } catch {}
-  });
 })();
 </script>
-<!-- ===== END ABSOL FIX 5 ===== -->
+<!-- ===== END ABSOL FIX 7 ===== -->
+        
 </body>
 </html>
