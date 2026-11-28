@@ -9330,5 +9330,40 @@ html #app,:root[data-theme] #app{background:var(--bg)!important}
 })();
 </script>
 <!-- ===== END ABSOL: loading screen ===== -->
+  <!-- ===== ABSOL: calmer loading screen (messaging style, UI font) ===== -->
+<style>
+#absBoot{gap:26px;font-family:var(--font,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif)}
+#absBoot .bw{font:700 34px/1 var(--font,system-ui,sans-serif);letter-spacing:.04em}
+#absBoot .bw span{animation:none!important;opacity:1}
+#absBoot .bd{display:none}
+#absBoot .bs{font-family:var(--font,system-ui,sans-serif)}
+
+#absBoot .cv{width:min(220px,62vw);display:flex;flex-direction:column;gap:9px}
+#absBoot .cb{height:30px;border-radius:15px;opacity:.2;animation:abfade 4.4s ease-in-out infinite}
+#absBoot .cb.l{align-self:flex-start;width:70%;background:var(--surface2);border-bottom-left-radius:5px}
+#absBoot .cb.r{align-self:flex-end;width:52%;background:var(--accent);border-bottom-right-radius:5px}
+#absBoot .cb.t{align-self:flex-start;width:58px;display:flex;align-items:center;justify-content:center;gap:5px;background:var(--surface2);border-bottom-left-radius:5px}
+#absBoot .cb:nth-child(1){animation-delay:0s}
+#absBoot .cb:nth-child(2){animation-delay:.7s}
+#absBoot .cb:nth-child(3){animation-delay:1.4s}
+#absBoot .cb.t i{width:5px;height:5px;border-radius:50%;background:var(--muted);opacity:.4;animation:abtype 1.6s ease-in-out infinite}
+#absBoot .cb.t i:nth-child(2){animation-delay:.2s}
+#absBoot .cb.t i:nth-child(3){animation-delay:.4s}
+@keyframes abfade{0%,12%{opacity:.18}32%,72%{opacity:.85}100%{opacity:.18}}
+@keyframes abtype{0%,100%{opacity:.3}50%{opacity:.9}}
+@media (prefers-reduced-motion:reduce){#absBoot .cb,#absBoot .cb.t i{animation:none;opacity:.6}}
+</style>
+<script>
+(function(){
+  const b = document.getElementById('absBoot'); if (!b) return;
+  const mk = c => { const d = document.createElement('div'); d.className = 'cb ' + c; return d; };
+  const t = mk('t'); t.append(document.createElement('i'), document.createElement('i'), document.createElement('i'));
+  const cv = document.createElement('div'); cv.className = 'cv';
+  cv.append(mk('l'), mk('r'), t);
+  const dots = b.querySelector('.bd');
+  if (dots) dots.replaceWith(cv); else b.appendChild(cv);
+})();
+</script>
+<!-- ===== END ABSOL: calmer loading screen ===== -->
 </body>
 </html>
