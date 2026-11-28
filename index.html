@@ -8561,5 +8561,103 @@ body.absol-audio-open {
 })();
 </script>
 <!-- ===== END ABSOL: New chat dialog + settings search ===== -->
+  <!-- ===== ABSOL: full-screen wallpaper, preview + blur, search focus fix ===== -->
+<style>
+/* search box focus */
+.ssearch{border:1px solid transparent}
+.ssearch:focus-within{border-color:var(--accent)}
+.ssearch input:focus,.ssearch input:focus-visible{outline:none!important;box-shadow:none!important}
+
+/* wallpaper lives on the whole chat screen */
+#chat{position:relative;overflow:hidden}
+#chat>*{position:relative;z-index:1}
+#chat::before{content:none;position:absolute;inset:-14px;z-index:0;background-size:cover;background-position:center;filter:blur(var(--wpblur,0px));pointer-events:none}
+#chat[data-bg="photo"]::before{content:"";background-image:var(--wp)}
+#chat[data-bg="deep"]{background:color-mix(in srgb,var(--bg) 70%,#000)}
+#chat[data-bg="dots"]{background-image:radial-gradient(color-mix(in srgb,var(--accent) 16%,transparent) 1.3px,transparent 1.4px);background-size:20px 20px}
+#chat[data-bg="lines"]{background-image:repeating-linear-gradient(45deg,color-mix(in srgb,var(--accent) 7%,transparent) 0 1px,transparent 1px 14px)}
+#msgs,#composer{background:transparent!important}
+
+/* wallpaper preview */
+#wpPrev{position:fixed;inset:0;z-index:150;display:flex;flex-direction:column;background:var(--bg);overflow:hidden;padding-top:env(safe-area-inset-top,0px)}
+#wpPrev .wpbg{position:absolute;inset:-14px;background-size:cover;background-position:center}
+#wpPrev .wpm{position:relative;flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:8px;padding:14px}
+#wpPrev .wpc{display:flex;gap:8px;align-items:center;margin-top:10px}
+#wpPrev .wpi{width:42px;height:42px;border-radius:var(--rs);display:grid;place-items:center;background:var(--surface2);color:var(--accent2)}
+#wpPrev .wpi.on{background:var(--accent);color:var(--accent-text)}
+#wpPrev .wpin{flex:1;height:42px;border-radius:var(--rs);background:var(--surface2);color:var(--muted);display:flex;align-items:center;padding:0 14px}
+#wpPrev .wpsheet{position:relative;background:var(--surface);padding:14px 16px calc(14px + env(safe-area-inset-bottom,0px));border-radius:var(--r) var(--r) 0 0}
+#wpPrev .wpsheet input[type=range]{width:100%;padding:0;border:0;background:transparent;accent-color:var(--accent)}
+</style>
+<script>
+(function(){
+  const SX = window.SX; if (!SX) return;
+  SX.defs.wpblur = 0;
+
+  /* wallpaper now goes on the whole chat screen */
+  SX.apply = function(){
+    const m = $('msgs'), c = $('chat'); if (!m || !c) return;
+    m.style.setProperty('--ts', SX.get('ts'));
+    m.dataset.bg = ''; m.style.backgroundImage = '';
+    const bg = SX.get('bg'), img = SX.get('bgimg');
+    c.dataset.bg = bg;
+    c.style.setProperty('--wp', bg === 'photo' && img ? 'url("' + img + '")' : 'none');
+    c.style.setProperty('--wpblur', (SX.get('wpblur') || 0) + 'px');
+  };
+  SX.apply();
+
+  /* preview screen: nothing is saved until the button is tapped */
+  function openPreview(url, blur){
+    let val = +blur || 0;
+    const label = n => n ? n + ' px' : 'Off';
+    const bg = el('div', { className: 'wpbg' }); bg.style.backgroundImage = 'url("' + url + '")'; bg.style.filter = 'blur(' + val + 'px)';
+    const lbl = el('span', { className: 'r', textContent: label(val) });
+    const sl = el('input', { type: 'range', min: 0, max: 20, value: val });
+    sl.oninput = () => { val = +sl.value; bg.style.filter = 'blur(' + val + 'px)'; lbl.textContent = label(val); };
+    const close = () => o.remove();
+    const o = el('div', { id: 'wpPrev' }, bg,
+      el('div', { className: 'wpm' },
+        el('div', { className: 'b them', textContent: 'Hey! How does this look?' }),
+        el('div', { className: 'b me', textContent: 'Pretty good, I like it' }),
+        el('div', { className: 'b them', textContent: 'Keep it?' }),
+        el('div', { className: 'wpc' }, el('span', { className: 'wpi', textContent: '{{plus}}' }), el('span', { className: 'wpin', textContent: 'Message' }), el('span', { className: 'wpi on', textContent: '{{mic}}' }))),
+      el('div', { className: 'wpsheet' },
+        el('div', { className: 'srow', style: 'border:0;padding:6px 4px' }, el('span', { textContent: 'Blur' }), lbl), sl,
+        el('div', { className: 'row', style: 'margin-top:12px' },
+          el('button', { className: 'ghost', textContent: 'Cancel', onclick: close }),
+          el('button', { textContent: 'Use as wallpaper', onclick: () => {
+            SX.set('bgimg', url); SX.set('wpblur', val); SX.set('bg', 'photo'); close(); toast('Wallpaper saved');
+            if (sview === 'chats' && !$('settings').hidden) rerender();
+          } }))));
+    document.body.appendChild(o);
+  }
+
+  /* Chats settings: photo opens the preview, plus blur and preview rows */
+  const _chats = VIEWS.chats;
+  VIEWS.chats = function(b){
+    _chats(b);
+    const f = b.querySelector('input[type=file]');
+    if (f) f.onchange = async e => {
+      const file = e.target.files[0]; e.target.value = ''; if (!file) return;
+      try {
+        const img = await loadImage(file), w = img.width || img.naturalWidth, h = img.height || img.naturalHeight, s = Math.min(1, 900 / Math.max(w, h));
+        const c = document.createElement('canvas'); c.width = Math.round(w * s); c.height = Math.round(h * s);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        openPreview(c.toDataURL('image/jpeg', .7), SX.get('wpblur') || 0);
+      } catch { toast('Could not use that image'); }
+    };
+    const range = el('input', { type: 'range', min: 0, max: 20, value: SX.get('wpblur') || 0, style: 'width:150px;padding:0;border:0;background:transparent;accent-color:var(--accent)' });
+    range.onchange = () => SX.set('wpblur', +range.value);
+    const blurRow = srow('Wallpaper blur', range);
+    const prevRow = srow('Preview wallpaper', chipBtn('Preview', () => {
+      const u = SX.get('bgimg'); if (!u) return toast('Choose a photo first');
+      openPreview(u, SX.get('wpblur') || 0);
+    }));
+    const own = [...b.querySelectorAll('.srow')].find(r => /Use my own photo/.test(r.textContent));
+    if (own) own.after(blurRow, prevRow);
+  };
+})();
+</script>
+<!-- ===== END ABSOL ===== -->
 </body>
 </html>
