@@ -8398,6 +8398,34 @@ body.absol-audio-open {
   });
 })();
 </script>
-<!-- ===== END ABSOL FIX 9 ===== -->       
+<!-- ===== END ABSOL FIX 9 ===== -->
+  <!-- ===== ABSOL TWEAK: settings list on the profile page, hide "Back up key" ===== -->
+<style>
+#settingsBtn,#backupBtn{display:none}
+</style>
+<script>
+(function(){
+  const rows = [
+    ['{{pencil}} Edit profile', 'profile'],
+    ['{{key}} Account and security', 'account'],
+    ['{{lock}} Locked chats', 'locks'],
+    ['{{shield}} Privacy', 'privacy'],
+    ['{{block}} Blocked contacts', 'blocked'],
+    ['{{chat}} Chats', 'chats'],
+    ['{{bell}} Notifications', 'notif'],
+    ['{{palette}} Theme', 'theme'],
+    ['{{info}} Data and help', 'data']
+  ];
+  const card = scard(...rows.map(([t, v]) => srow(t, '{{chev-right}}', () => gotoView(v))));
+  $('settingsBtn').before(el('div', { id: 'profSettings' }, el('div', { className: 'sec', textContent: 'Settings' }), card));
+
+  /* back goes to the profile page, except from Active sessions */
+  $('setBack').onclick = () => {
+    if (sview === 'sessions') gotoView('account');
+    else { fillProfile(); show('profile'); }
+  };
+})();
+</script>
+<!-- ===== END TWEAK ===== -->
 </body>
 </html>
