@@ -9042,36 +9042,47 @@ html #app,:root[data-theme] #app{background:var(--bg)!important}
 })();
 </script>
 <!-- ===== END ABSOL: uniform avatars + unread chat highlight ===== -->
-<!-- ===== ABSOL: Default and Dark themes reworked (soft cool slate, no stark black or white) =====
-     Paste at the very bottom of your HTML, after Themes V3 and your other blocks, before </body>.
-     Nothing is deleted. The five colour themes are not touched. To undo, delete this block. No SQL needed. -->
+
+<!-- ===== ABSOL: the Dark theme becomes the Default theme (old Default removed) =====
+     1) DELETE the previous "Default and Dark themes reworked" block.
+     2) Paste this at the very bottom of your HTML, after Themes V3 and your other blocks, before </body>.
+     The five colour themes are not touched. Anyone who had "Dark" selected is moved to Default automatically.
+     To undo, delete this block. No SQL needed. -->
 <style>
-/* Dark: remove the old pure black-and-white call and status colours */
-:root[data-theme="dark"] .cb.green{background:#3f9a6b;color:#fff}
-:root[data-theme="dark"] .cb.red{background:#c4575c;color:#fff}
-:root[data-theme="dark"] .i.online{color:#7cc29b}
+:root[data-theme="default"] .cb.green{background:#3f9a6b;color:#fff}
+:root[data-theme="default"] .cb.red{background:#c4575c;color:#fff}
+:root[data-theme="default"] .i.online{color:#7cc29b}
 </style>
 <script>
 (function(){
-  const mk = (n, hue, mode, v) => { v = { ...v, danger: mode === 'dark' ? '#e0707c' : '#d93a4e' }; v.partner = v.accent2; v.hi = v.accent; return { n, hue, mode, v }; };
+  /* the old white Default is gone; Default is now the soft deep blue-grey theme (the former Dark) */
+  THEMES.default = {
+    n: 'Default', hue: 220, mode: 'dark',
+    v: { bg:'#14171c', surface:'#1b1f26', surface2:'#262b34', border:'#333a45',
+         text:'#dde2ea', muted:'#8892a0', accent:'#8da2c2', accent2:'#b4c3da', 'accent-text':'#11151b',
+         mine:'#2f3a4d', 'mine-text':'#e4e9f1', theirs:'#262b34',
+         danger:'#e0707c', partner:'#b4c3da', hi:'#8da2c2' }
+  };
+  delete THEMES.dark;
 
-  /* Default: a calm cool-grey light theme. Page, cards and controls are different tints of the same slate,
-     buttons are a medium slate-blue (not black), and sent bubbles are a pale slate. */
-  THEMES.default = mk('Default', 220, 'light', {
-    bg:'#e9ecf1', surface:'#f4f6f9', surface2:'#dde2ea', border:'#cfd5de',
-    text:'#2a3140', muted:'#77818f', accent:'#5b6d86', accent2:'#475871', 'accent-text':'#ffffff',
-    mine:'#cdd6e3', 'mine-text':'#2a3140', theirs:'#f4f6f9' });
+  /* anything that still asks for "dark" gets Default */
+  const _apply = applyTheme;
+  applyTheme = function(k){ return _apply(k === 'dark' ? 'default' : k); };
 
-  /* Dark: deep blue-grey, soft steel-blue buttons, muted slate bubbles. No pure black, no pure white. */
-  THEMES.dark = mk('Dark', 220, 'dark', {
-    bg:'#14171c', surface:'#1b1f26', surface2:'#262b34', border:'#333a45',
-    text:'#dde2ea', muted:'#8892a0', accent:'#8da2c2', accent2:'#b4c3da', 'accent-text':'#11151b',
-    mine:'#2f3a4d', 'mine-text':'#e4e9f1', theirs:'#262b34' });
+  /* move a saved "dark" choice (this device and your account) over to Default */
+  try { if (localStorage.getItem('absol-theme') === 'dark') localStorage.setItem('absol-theme', 'default'); } catch {}
+  const _lp = loadPrefs;
+  loadPrefs = async function(){
+    const r = await _lp.apply(this, arguments);
+    try { if (prefs.theme === 'dark'){ prefs.theme = 'default'; savePrefs({ theme: 'default' }); } } catch {}
+    return r;
+  };
+  try { if (typeof prefs !== 'undefined' && prefs.theme === 'dark') prefs.theme = 'default'; } catch {}
 
   applyTheme(localStorage.getItem('absol-theme') || 'lavender');
 })();
 </script>
-<!-- ===== END ABSOL: Default and Dark reworked ===== -->
+<!-- ===== END ABSOL: Default is the former Dark theme ===== -->
 
 </body>
 </html>
