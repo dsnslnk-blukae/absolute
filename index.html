@@ -9225,5 +9225,45 @@ html #app,:root[data-theme] #app{background:var(--bg)!important}
 })();
 </script>
 <!-- ===== END ABSOL FIX: reminders ===== -->
+  <!-- ===== ABSOL FIX: aligned chat-row icons ===== -->
+<style>
+#convos .convo .tx b{
+  display:flex!important;
+  align-items:center;
+  gap:7px;
+  white-space:nowrap;
+}
+#convos .convo .tx b .pinic,
+#convos .convo .tx b .muteic,
+#convos .convo .tx b .remic{
+  display:inline-flex!important;
+  align-items:center;
+  justify-content:center;
+  flex:none;
+  width:19px!important;
+  height:19px!important;
+  margin:0!important;
+  vertical-align:baseline!important;
+  font-size:0!important;
+  line-height:1;
+}
+#convos .convo .tx b .pinic svg,
+#convos .convo .tx b .muteic svg,
+#convos .convo .tx b .remic svg{
+  display:block;
+  width:19px!important;
+  height:19px!important;
+  margin:0!important;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+#convos .convo .tx b .pinic{color:var(--accent)}
+#convos .convo .tx b .remic{color:var(--accent)}
+#convos .convo .tx b .muteic{color:var(--muted)}
+</style>
+<!-- ===== END ABSOL FIX ===== -->
 </body>
 </html>
