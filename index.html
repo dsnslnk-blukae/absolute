@@ -8427,5 +8427,139 @@ body.absol-audio-open {
 })();
 </script>
 <!-- ===== END TWEAK ===== -->
+  <!-- ===== ABSOL: simpler New chat dialog + settings search ===== -->
+<style>
+/* New chat dialog */
+.nc-sec{margin-bottom:16px}
+.nc-label{font-size:14px;font-weight:800;color:var(--accent)}
+.nc-help{margin:2px 0 8px;font-size:12.5px;color:var(--muted)}
+.nc-line{display:flex;gap:8px;align-items:stretch;margin-top:8px}
+.nc-line input{flex:1;min-width:0;width:auto}
+.nc-line button{flex:none;width:auto;padding:0 18px}
+.nc-box{background:var(--surface2);border-radius:var(--rs);padding:10px;margin-top:8px}
+.nc-t{font-size:13px;font-weight:700}
+.nc-box>button{width:100%;margin-top:8px}
+#roomCreate,#roomJoin{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+#newGroup{display:flex;align-items:center;gap:12px;width:100%;margin-top:8px;text-align:left;background:var(--surface2);color:var(--text);padding:12px 14px}
+#newGroup .nc-ti{display:flex;color:var(--accent)}
+#newGroup .nc-ti .i{width:22px;height:22px;margin:0}
+#newGroup .nc-tx b{display:block;font-size:14px}
+#newGroup .nc-tx small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+#newGroup .nc-ch{margin-left:auto;display:flex;color:var(--muted)}
+#newGroup .nc-ch .i{margin:0}
+/* settings search */
+.ssearch{display:flex;align-items:center;gap:10px;background:var(--surface2);border-radius:var(--rs);padding:0 14px;margin:0 0 12px}
+.ssearch .i{color:var(--muted);margin:0}
+.ssearch input{flex:1;min-width:0;border:0!important;background:transparent!important;padding:13px 0!important}
+@keyframes sfl{0%,60%{background:color-mix(in srgb,var(--accent) 22%,transparent)}100%{background:transparent}}
+.sflash{animation:sfl 2s}
+</style>
+<script>
+/* ---------- 1) New chat dialog ---------- */
+(function(){
+  const dlg = $('newDlg'); if (!dlg) return;
+  const h2 = dlg.querySelector('h2'); h2.textContent = 'New chat';
+  const u = $('newUser'), go = $('newGo'), grp = $('newGroup'), rc = $('roomCreate'),
+        code = $('roomCode'), rj = $('roomJoin'), msg = $('roomMsg'), cancel = $('newCancel'), hint = $('pmHint');
+  go.textContent = 'Start'; rc.textContent = 'Create code'; rj.textContent = 'Join';
+  u.placeholder = 'Their username'; code.placeholder = '5-digit code'; code.style.marginTop = '0';
+  grp.removeAttribute('style'); grp.className = '';
+  grp.replaceChildren(
+    el('span', { className: 'nc-ti', textContent: '{{users}}' }),
+    el('span', { className: 'nc-tx' }, el('b', { textContent: 'New group' }), el('small', { textContent: 'Chat with several people at once' })),
+    el('span', { className: 'nc-ch', textContent: '{{chev-right}}' }));
+  const sec = (label, help, ...kids) => el('div', { className: 'nc-sec' },
+    el('div', { className: 'nc-label', textContent: label }), help ? el('p', { className: 'nc-help', textContent: help }) : '', ...kids);
+  dlg.replaceChildren(h2,
+    sec('Message someone', 'Type their exact username.', el('div', { className: 'nc-line' }, u, go), hint || ''),
+    sec('Group', null, grp),
+    sec('Room code', 'Chat without usernames. One person creates a code, the other types it in.',
+      el('div', { className: 'nc-box' }, el('div', { className: 'nc-t', textContent: 'I’ll share a code' }), rc),
+      el('div', { className: 'nc-box' }, el('div', { className: 'nc-t', textContent: 'I got a code' }), el('div', { className: 'nc-line' }, code, rj))),
+    msg, el('div', { className: 'row' }, cancel));
+})();
+
+/* ---------- 2) Settings search on the profile page ---------- */
+(function(){
+  const box = document.getElementById('profSettings');
+  if (!box){ console.warn('[settings search] profile settings list not found'); return; }
+  const card = box.querySelector('.scard');
+  /* [label, screen, text to highlight, extra search words] */
+  const IDX = [
+    ['Change photo','profile','change photo','picture avatar image'],
+    ['Display name','profile','display name','name'],
+    ['Bio','profile','bio','about status'],
+    ['Email','profile','email','mail'],
+    ['Phone number','profile','number','phone mobile'],
+    ['Key backup','account','key backup','encryption recovery restore'],
+    ['Update your backup','account','update your backup','back up now'],
+    ['Backup check','account','copy saved in your account','verify'],
+    ['App PIN lock','account','app pin lock','passcode'],
+    ['Auto-lock','account','auto-lock','timeout'],
+    ['Blur when switching apps','account','blur when switching','recent apps screen'],
+    ['Panic hide','account','panic hide','shake decoy'],
+    ['Change password','account','change password',''],
+    ['Active sessions','account','active sessions','devices logged in'],
+    ['Log out other devices','account','log out other devices','sessions'],
+    ['Security code change alerts','account','security code change','verify key'],
+    ['Google recovery','account','google recovery','link gmail'],
+    ['Delete account','account','delete account','remove erase'],
+    ['Locked chats','locks','locked chats','lock hidden password'],
+    ['Show online status','privacy','show online status','last seen'],
+    ['Hide my photo from unsaved contacts','privacy','hide my photo','profile picture'],
+    ['Read receipts','privacy','read receipts','seen green dot'],
+    ['Typing indicator','privacy','typing indicator','typing'],
+    ['Hide message previews','privacy','hide message previews','preview'],
+    ['Private mode','privacy','private mode','room codes only'],
+    ['Who can add me to groups','privacy','who can add me','group invites'],
+    ['Disappearing messages','privacy','disappearing messages','timer auto delete'],
+    ['Blocked contacts','blocked','','block unblock'],
+    ['Text size','chats','text size','font bigger smaller'],
+    ['Chat background','chats','chat background','wallpaper'],
+    ['Enter key sends','chats','enter key sends','keyboard'],
+    ['Photo quality','chats','photo quality','data saver'],
+    ['Export a chat','chats','export a chat','download text'],
+    ['Enable notifications','notif','enable notifications','alerts'],
+    ['Message sound','notif','message sound','tone'],
+    ['Call ringtone','notif','call ringtone','ring'],
+    ['Vibration','notif','vibration','vibrate'],
+    ['Quiet hours','notif','quiet hours','do not disturb night'],
+    ['Chat-specific notifications','notif','chat-specific','mute per chat'],
+    ['Theme colors','theme','','dark lavender blue green orange rose default'],
+    ['Storage and data','data','storage and data','memory space'],
+    ['Clear call history','data','clear call history','delete calls'],
+    ['Clear recent searches','data','clear recent searches','history'],
+    ['About and help','data','about and help','safety number new phone report version']
+  ];
+  const inp = el('input', { placeholder: 'Search settings', autocomplete: 'off', id: 'setSearch' });
+  const res = el('div', {});
+  box.querySelector('.sec').after(el('div', { className: 'ssearch' }, '{{search}}', inp), res);
+
+  function flash(find){
+    if (!find) return;
+    const f = find.toLowerCase();
+    const t = [...document.querySelectorAll('#sbody .srow,#sbody .sec,#sbody .dlabel,#sbody .hint')].find(x => x.textContent.toLowerCase().includes(f));
+    if (!t) return;
+    const r = t.closest('.srow') || t;
+    r.scrollIntoView({ block: 'center' }); r.classList.add('sflash'); setTimeout(() => r.classList.remove('sflash'), 2100);
+  }
+  async function open([label, view, find]){
+    inp.value = ''; render();
+    await gotoView(view);
+    if (sview === view) setTimeout(() => flash(find), 150);
+  }
+  function render(){
+    const q = inp.value.trim().toLowerCase(); res.textContent = '';
+    card.hidden = !!q; if (!q) return;
+    const toks = q.split(/\s+/).filter(Boolean);
+    const hits = IDX.filter(([l, v, f, k]) => { const h = (l + ' ' + k + ' ' + (SETTITLES[v] || '')).toLowerCase(); return toks.every(t => h.includes(t)); });
+    if (!hits.length){ res.append(empty('No settings match “' + inp.value.trim() + '”')); return; }
+    res.append(scard(...hits.slice(0, 12).map(h => el('div', { className: 'srow tap', onclick: () => open(h) },
+      el('div', { style: 'min-width:0' }, el('b', { textContent: h[0] }), el('div', { className: 'r', textContent: SETTITLES[h[1]] || '' })), '{{chev-right}}'))));
+  }
+  inp.addEventListener('input', render);
+})();
+</script>
+<!-- ===== END ABSOL: New chat dialog + settings search ===== -->
 </body>
 </html>
