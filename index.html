@@ -8854,6 +8854,80 @@ body.absol-audio-open {
 })();
 </script>
 <!-- ===== END ABSOL LINKS ===== -->
+  <!-- ===== ABSOL FRESH THEMES: bright, cool, flat colours (no glow, no gradients) =====
+     Paste at the very bottom of your HTML, after your last block and before </body>.
+     Default and Dark stay as they are. Lavender, Blue, Green, Orange and Rose are redone.
+     To undo, delete this block. No SQL needed. -->
+<style>
+/* remove every glow and gradient left over from earlier patches */
+html #app,:root[data-theme] #app{background:var(--bg)!important}
+.fab{box-shadow:none!important}
+.card,.scard,.dcard,.menu,dialog{box-shadow:none}
+
+/* light themes: small fixes so nothing disappears on a bright background */
+:root[data-mode="light"]{--dot-sent:var(--muted)}
+:root[data-mode="light"] #msgs .b.me > .tk.dot.pend{border-color:var(--muted)}
+.abs-dialog input[type="datetime-local"]{color-scheme:inherit!important}
+
+/* controls inside a sent bubble must not match the bubble colour */
+:root[data-mode="light"] #msgs .b.me .vm .pp,
+:root[data-mode="light"] #msgs .b.me .lcard .lci,
+:root[data-theme="default"] #msgs .b.me .vm .pp,
+:root[data-theme="default"] #msgs .b.me .lcard .lci{background:var(--mine-text);color:var(--mine)}
+:root[data-mode="light"] #msgs .b.me .att .ai{background:rgba(255,255,255,.22);color:#fff}
+</style>
+<script>
+(function(){
+  const DG = '#d93a4e';   /* clear red for warnings and delete */
+  const mk = (n, hue, mode, v) => { v.danger = DG; v.partner = v.accent2; v.hi = v.accent; return { n, hue, mode, v }; };
+
+  /* Solid colours only. Background is a soft tint, cards are clean white,
+     the sent bubble is the full accent colour, accent2 is a deeper shade for text and icons. */
+  const T = {
+    lavender: mk('Lavender', 262, 'light', {
+      bg:'#f3f0ff', surface:'#ffffff', surface2:'#e9e4ff', border:'#dbd3fb',
+      text:'#1d1840', muted:'#766ea3', accent:'#6a49ee', accent2:'#4528c2', 'accent-text':'#ffffff',
+      mine:'#6a49ee', 'mine-text':'#ffffff', theirs:'#ffffff' }),
+    blue: mk('Blue', 214, 'light', {
+      bg:'#edf6ff', surface:'#ffffff', surface2:'#dfecfb', border:'#cfe0f4',
+      text:'#0e2540', muted:'#668099', accent:'#1f7aec', accent2:'#0b57b8', 'accent-text':'#ffffff',
+      mine:'#1f7aec', 'mine-text':'#ffffff', theirs:'#ffffff' }),
+    green: mk('Mint', 152, 'light', {
+      bg:'#eefaf3', surface:'#ffffff', surface2:'#dbf2e5', border:'#c9e8d7',
+      text:'#0f2a1d', muted:'#5b8670', accent:'#0f9d6a', accent2:'#07674a', 'accent-text':'#ffffff',
+      mine:'#0f9d6a', 'mine-text':'#ffffff', theirs:'#ffffff' }),
+    orange: mk('Orange', 28, 'light', {
+      bg:'#fff5ec', surface:'#ffffff', surface2:'#ffe8d4', border:'#f5d6bb',
+      text:'#35200f', muted:'#98785a', accent:'#ea5c0a', accent2:'#b03c00', 'accent-text':'#ffffff',
+      mine:'#ea5c0a', 'mine-text':'#ffffff', theirs:'#ffffff' }),
+    rose: mk('Rose', 345, 'light', {
+      bg:'#fff0f4', surface:'#ffffff', surface2:'#ffdfe9', border:'#f6cddb',
+      text:'#3a0f1f', muted:'#9e6680', accent:'#e0356a', accent2:'#a81f4c', 'accent-text':'#ffffff',
+      mine:'#e0356a', 'mine-text':'#ffffff', theirs:'#ffffff' })
+  };
+
+  /* keep Default and Dark exactly as they were, mark them as dark */
+  if (THEMES.default) THEMES.default.mode = 'dark';
+  if (THEMES.dark) THEMES.dark.mode = 'dark';
+  Object.keys(T).forEach(k => { THEMES[k] = T[k]; });
+
+  applyTheme = function(k){
+    const key = THEMES[k] ? k : 'lavender', t = THEMES[key], root = document.documentElement;
+    Object.entries(t.v).forEach(([a, b]) => root.style.setProperty('--' + a, b));
+    root.style.setProperty('--grad', t.v.accent);          /* solid, not a gradient */
+    root.style.colorScheme = t.mode || 'dark';
+    root.setAttribute('data-theme', key);
+    root.setAttribute('data-mode', t.mode || 'dark');
+    themeHue = t.hue;
+    try { localStorage.setItem('absol-theme', key); } catch {}
+    document.querySelector('meta[name=theme-color]').content = t.v.bg;
+    try { if (me){ renderList(); if (!document.getElementById('chat').hidden) renderMsgs(); } } catch {}
+  };
+  applyTheme(localStorage.getItem('absol-theme') || 'lavender');
+})();
+</script>
+<!-- ===== END ABSOL FRESH THEMES ===== -->
+
 
 </body>
 </html>
