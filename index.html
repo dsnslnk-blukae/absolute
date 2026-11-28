@@ -9042,6 +9042,36 @@ html #app,:root[data-theme] #app{background:var(--bg)!important}
 })();
 </script>
 <!-- ===== END ABSOL: uniform avatars + unread chat highlight ===== -->
+<!-- ===== ABSOL: Default and Dark themes reworked (soft cool slate, no stark black or white) =====
+     Paste at the very bottom of your HTML, after Themes V3 and your other blocks, before </body>.
+     Nothing is deleted. The five colour themes are not touched. To undo, delete this block. No SQL needed. -->
+<style>
+/* Dark: remove the old pure black-and-white call and status colours */
+:root[data-theme="dark"] .cb.green{background:#3f9a6b;color:#fff}
+:root[data-theme="dark"] .cb.red{background:#c4575c;color:#fff}
+:root[data-theme="dark"] .i.online{color:#7cc29b}
+</style>
+<script>
+(function(){
+  const mk = (n, hue, mode, v) => { v = { ...v, danger: mode === 'dark' ? '#e0707c' : '#d93a4e' }; v.partner = v.accent2; v.hi = v.accent; return { n, hue, mode, v }; };
+
+  /* Default: a calm cool-grey light theme. Page, cards and controls are different tints of the same slate,
+     buttons are a medium slate-blue (not black), and sent bubbles are a pale slate. */
+  THEMES.default = mk('Default', 220, 'light', {
+    bg:'#e9ecf1', surface:'#f4f6f9', surface2:'#dde2ea', border:'#cfd5de',
+    text:'#2a3140', muted:'#77818f', accent:'#5b6d86', accent2:'#475871', 'accent-text':'#ffffff',
+    mine:'#cdd6e3', 'mine-text':'#2a3140', theirs:'#f4f6f9' });
+
+  /* Dark: deep blue-grey, soft steel-blue buttons, muted slate bubbles. No pure black, no pure white. */
+  THEMES.dark = mk('Dark', 220, 'dark', {
+    bg:'#14171c', surface:'#1b1f26', surface2:'#262b34', border:'#333a45',
+    text:'#dde2ea', muted:'#8892a0', accent:'#8da2c2', accent2:'#b4c3da', 'accent-text':'#11151b',
+    mine:'#2f3a4d', 'mine-text':'#e4e9f1', theirs:'#262b34' });
+
+  applyTheme(localStorage.getItem('absol-theme') || 'lavender');
+})();
+</script>
+<!-- ===== END ABSOL: Default and Dark reworked ===== -->
 
 </body>
 </html>
