@@ -8343,6 +8343,61 @@ body.absol-audio-open {
 })();
 </script>
 <!-- ===== END ABSOL FIX 7 ===== -->
-        
+ <!-- ===== ABSOL FIX 9: verified backup + honest status ===== -->
+<script>
+(function(){
+  async function serverHas(){
+    const { data } = await sb.from('profiles').select('key_backup').eq('id', me.id).maybeSingle();
+    return !!(data && data.key_backup);
+  }
+  async function saveV(secret){
+    if (b64(nacl.box.keyPair.fromSecretKey(me.sk).publicKey) !== me.pk)
+      throw new Error('The key on this device doesn’t match your account. Don’t back up from here.');
+    const json = await makeBackup(secret);
+    const { data, error } = await sb.from('profiles').update({ key_backup: json }).eq('id', me.id).select('key_backup');
+    if (error) throw error;
+    if (!data || !data.length || !data[0].key_backup)
+      throw new Error('The database accepted nothing. Check the update permission on the profiles table.');
+    me.backedUp = true; $('banner').hidden = true;
+    if (profiles[me.id]) profiles[me.id].key_backup = json;
+  }
+  function ask(){
+    return new Promise(res => {
+      let done = false;
+      const fin = v => { if (done) return; done = true; d.close(); d.remove(); res(v); };
+      const inp = el('input', { type: 'password', placeholder: 'Your Absol password', autocomplete: 'current-password', style: 'margin-top:8px' });
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') fin(inp.value); });
+      const d = el('dialog', {}, el('h2', { textContent: 'Update backup' }),
+        el('p', { className: 'hint', textContent: 'Your password protects the copy of your key saved in your account.' }), inp,
+        el('div', { className: 'row', style: 'margin-top:12px' },
+          el('button', { className: 'ghost', textContent: 'Cancel', onclick: () => fin(null) }),
+          el('button', { textContent: 'Update', onclick: () => fin(inp.value) })));
+      d.addEventListener('cancel', () => fin(null));
+      document.body.appendChild(d); d.showModal(); inp.focus();
+    });
+  }
+  openBackupDlg = async function(){
+    const s = await ask(); if (!s) return;
+    const { error } = await sb.auth.signInWithPassword({ email: me.email, password: s });
+    if (error) return toast('Wrong password');
+    try { await saveV(s); toast('Backup saved and checked'); }
+    catch (e){ toast('Backup failed: ' + (e.message || e)); }
+    if (sview === 'account' && !$('settings').hidden) rerender();
+  };
+  $('bannerBtn').onclick = openBackupDlg;
+  $('backupBtn').onclick = openBackupDlg;
+
+  /* honest status line in Settings */
+  SX.hook('account', b => {
+    const r = el('span', { className: 'r', textContent: 'Checking…' });
+    b.append(el('div', { className: 'sec', textContent: 'Backup check' }),
+      scard(srow('Copy saved in your account', r)),
+      el('p', { className: 'hint', textContent: 'This reads your account directly. If it says No, tap Open under Key backup and enter your password.' }));
+    serverHas().then(v => { r.textContent = v ? 'Yes' : 'No'; me.backedUp = v; if (!v) r.classList.add('red'); })
+      .catch(() => { r.textContent = 'Could not check'; });
+  });
+})();
+</script>
+<!-- ===== END ABSOL FIX 9 ===== -->       
 </body>
 </html>
