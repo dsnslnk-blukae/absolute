@@ -9007,6 +9007,41 @@ html #app,:root[data-theme] #app{background:var(--bg)!important}
 })();
 </script>
 <!-- ===== END ABSOL THEMES V3 ===== -->
+<!-- ===== ABSOL: uniform avatars + unread chat highlight =====
+     Paste at the very bottom of your HTML, after your last block and before </body>.
+     Nothing is deleted. To undo, delete this block. No SQL needed. -->
+<style>
+/* unread chats: tinted row, accent bar on the left, bolder text, stronger badge */
+#convos .convo{position:relative}
+#convos .convo.unr,
+#convos .convo.unr.abs-picked{background:color-mix(in srgb,var(--accent) 15%,var(--surface))}
+#convos .convo.unr::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:4px;border-radius:0 4px 4px 0;background:var(--accent)}
+#convos .convo.unr .tx b{color:var(--text);font-weight:800}
+#convos .convo.unr .tx span{color:var(--text);font-weight:700}
+.ub{min-width:24px;padding:3px 8px;border-radius:12px;font-size:12px;font-weight:800;background:var(--accent);color:var(--accent-text)}
+</style>
+<script>
+(function(){
+  /* every profile picture and group icon uses the same colour (photos still show as photos) */
+  avatar = function(name, cls){
+    const d = document.createElement('div'); d.className = 'av ' + (cls || '');
+    const n = name || '?'; d.textContent = n[0].toUpperCase();
+    d.style.background = 'var(--accent)'; d.style.color = 'var(--accent-text)';
+    const ph = (cls || '').includes('grp') ? null : photoByName[n];
+    if (ph){ d.textContent = ''; d.style.backgroundImage = 'url("' + ph + '")'; d.style.backgroundSize = 'cover'; d.style.backgroundPosition = 'center'; }
+    return d;
+  };
+  try {
+    if (me){
+      renderList();
+      if (window.AbsolCall && AbsolCall.render) AbsolCall.render();
+      const ab = document.getElementById('avatarBtn'); if (ab) ab.replaceChildren(avatar(me.username));
+      if (!document.getElementById('chat').hidden) renderMsgs();
+    }
+  } catch (e) { console.warn('[avatars]', e); }
+})();
+</script>
+<!-- ===== END ABSOL: uniform avatars + unread chat highlight ===== -->
 
 </body>
 </html>
